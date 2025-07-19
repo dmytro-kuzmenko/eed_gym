@@ -56,8 +56,7 @@ numpy
 
 ```bash
 python empathic_disobedience_env.py            
-python train_ppo_eed.py --total-steps 600000 \
-  --eval-interval 20000 --eval-episodes 20 --seeds 3
+python train_ppo_eed.py --total-steps 100000 --eval-interval 20000 --eval-episodes 20 --seeds 1
 ```
 
 ---
