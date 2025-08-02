@@ -103,8 +103,13 @@ class WandbLoggingCallback(BaseCallback):
         self.rw = reward_weights
         self.sim = sim_params
 
-    def _log_reward_weights(self, step: int):
-        wandb.log({
+    # def _log_reward_weights(self, step: int):
+    #     wandb.log({
+
+    #     }, step=step)
+
+    def _on_training_start(self):
+        sim_log = {
             "weights/task": self.rw.task,
             "weights/safety": self.rw.safety,
             "weights/blame": self.rw.blame,
@@ -114,11 +119,7 @@ class WandbLoggingCallback(BaseCallback):
             "weights/clarify_cost": self.rw.clarify_cost,
             "weights/alt_progress_bonus": self.rw.alt_progress_bonus,
             "weights/empathetic_style_bonus": self.rw.empathetic_style_bonus,
-            "weights/constructive_style_bonus": self.rw.constructive_style_bonus
-        }, step=step)
-
-    def _on_training_start(self):
-        sim_log = {
+            "weights/constructive_style_bonus": self.rw.constructive_style_bonus,
             "sim/max_steps": self.sim.max_steps,
             "sim/progress_per_safe_comply": self.sim.progress_per_safe_comply,
             "sim/progress_penalty_risky_comply": self.sim.progress_penalty_risky_comply,
@@ -137,8 +138,11 @@ class WandbLoggingCallback(BaseCallback):
             "sim/risk_threshold_valence_coeff": self.sim.risk_threshold_valence_coeff,
             "sim/safety_violation_prob": self.sim.safety_violation_prob
         }
-        wandb.log(sim_log, step=0)
-        self._log_reward_weights(step=0)
+        data = {**sim_log}
+        table = wandb.Table(columns=list(data.keys()), data=[[v for v in data.values()]])
+        wandb.log({"init/param_table": table}, step=0)
+        # self._log_reward_weights(step=0)
+        # wandb.log(sim_log, step=0)
 
     def _on_step(self) -> bool:
         total_steps = self.num_timesteps
@@ -147,7 +151,6 @@ class WandbLoggingCallback(BaseCallback):
         if total_steps - self.last_eval >= self.eval_interval:
             self.last_eval = total_steps
             metrics = self.evaluate_policy()
-            self._log_reward_weights(step=total_steps)
             wandb.log(metrics, step=total_steps)
         return True
 
@@ -160,10 +163,17 @@ class WandbLoggingCallback(BaseCallback):
         risk_all = []
         threshold_all = []
         refuse_all = []
+        trust_means = []
+        trust_stds = []
+        valence_means = []
+        arousal_means = []
         bin_counts = np.zeros(10)
         bin_refusals = np.zeros(10)
         for ep in range(self.eval_episodes):
             obs, info = env.reset()
+            trust_traj = []
+            valence_traj = []
+            arousal_traj = []
             for t in range(env.sp.max_steps):
                 action, _ = self.model.predict(obs, deterministic=True)
                 obs, r, done, trunc, info = env.step(int(action))
@@ -183,8 +193,16 @@ class WandbLoggingCallback(BaseCallback):
                     refusals.append(1)
                     if info["command_risky"] and not info["unjustified_refusal"]:
                         justified.append(1)
+                trust_traj.append(env.trust)
+                valence_traj.append(env.valence)
+                arousal_traj.append(env.arousal)
                 if done:
                     break
+
+            arousal_means.append(np.mean(arousal_traj))
+            trust_means.append(np.mean(trust_traj))
+            trust_stds.append(np.std(trust_traj))
+            valence_means.append(np.mean(valence_traj))
 
         refusal_rates = (bin_refusals / np.maximum(1, bin_counts)).tolist()
         spearman_corr, _ = spearmanr(np.arange(10), refusal_rates)
@@ -201,6 +219,9 @@ class WandbLoggingCallback(BaseCallback):
 
         metrics = {
             "eval/mean_reward": float(np.mean(rewards)),
+            "eval/mean_valence": float(np.mean(valence_means)),
+            "eval/mean_trust": float(np.mean(trust_means)),
+            "eval/mean_arousal": float(np.mean(arousal_means)),
             "eval/safety_viols_per_ep": float(np.sum(safety)/self.eval_episodes),
             "eval/refusals_per_ep": float(np.sum(refusals)/self.eval_episodes),
             "eval/justified_ratio": float((np.sum(justified)/np.sum(refusals)) if np.sum(refusals)>0 else 0),
@@ -210,18 +231,15 @@ class WandbLoggingCallback(BaseCallback):
             "eval/refusal_precision": precision,
             "eval/refusal_recall": recall,
             "eval/refusal_f1": f1,
-            "eval/refusal_tp": tp,
-            "eval/refusal_fp": fp,
-            "eval/refusal_fn": fn
         }
         for i, rate in enumerate(refusal_rates):
             metrics[f"calibration/bin_{i}_refusal_rate"] = float(rate)
             metrics[f"calibration/bin_{i}_count"] = float(bin_counts[i])
         return metrics
 
-def make_env(reward_weights: RewardWeights, sim_params: SimParams, seed=None):
+def make_env(reward_weights: RewardWeights, sim_params: SimParams, seed=None, observe_valence=None):
     def _thunk():
-        env = EmpathicDisobedienceEnv(reward_weights=reward_weights, sim_params=sim_params)
+        env = EmpathicDisobedienceEnv(reward_weights=reward_weights, sim_params=sim_params, observe_valence=observe_valence)
         if seed is not None:
             env.reset(seed=seed)
         return env
@@ -232,6 +250,8 @@ def main():
     parser.add_argument("--total-steps", type=int, default=500000)
     parser.add_argument("--eval-interval", type=int, default=20000)
     parser.add_argument("--eval-episodes", type=int, default=10)
+    parser.add_argument("--observe-valence", action="store_true", help="Disable valence features")
+    parser.add_argument("--name", type=str, default="eed_ppo_default")
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--project", type=str, default="eed_gym")
     parser.add_argument("--policy", type=str, default="MlpPolicy", help="MlpPolicy or MlpLstmPolicy")
@@ -259,7 +279,7 @@ def main():
         sim = SimParams(**{k: getattr(sim_params, k) for k in sim_params.__dataclass_fields__.keys()})
         run = wandb.init(project=args.project,
                          entity=args.entity,
-                         name=f"seed_{seed}",
+                         name=f"{args.name}_{seed}",
                          config={
                             **static_hparams,
                             "seed": seed,
@@ -271,7 +291,7 @@ def main():
                          reinit=True)
         dump_run_config(run, rw, sim, static_hparams)
 
-        vec_env = DummyVecEnv([make_env(rw, sim, seed)])
+        vec_env = DummyVecEnv([make_env(rw, sim, seed, args.observe_valence)])
         vec_env = EpisodeStatsWrapper(vec_env)
 
         model = PPO(args.policy, vec_env,
@@ -287,7 +307,7 @@ def main():
                     seed=seed)
 
         callback = WandbLoggingCallback(
-            eval_env_fn=lambda: EmpathicDisobedienceEnv(reward_weights=rw, sim_params=sim),
+            eval_env_fn=lambda: EmpathicDisobedienceEnv(reward_weights=rw, sim_params=sim, observe_valence=args.observe_valence),
             eval_interval=args.eval_interval,
             eval_episodes=args.eval_episodes,
             reward_weights=rw,
@@ -295,7 +315,7 @@ def main():
         )
 
         model.learn(total_timesteps=args.total_steps, callback=callback)
-        model.save(f"ppo_eed_seed{seed}.zip")
+        model.save(f"{args.name}_{seed}")
         wandb.finish()
 
 if __name__ == "__main__":

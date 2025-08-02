@@ -55,8 +55,9 @@ numpy
 ## 5. Quick Start
 
 ```bash
-python empathic_disobedience_env.py            
-python train_ppo_eed.py --total-steps 100000 --eval-interval 20000 --eval-episodes 20 --seeds 1
+python train_ppo_eed.py --total-steps 600000 --eval-interval 1000 --eval-episodes 50 --seeds 1
+
+python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250802 --observe-valence
 ```
 
 ---

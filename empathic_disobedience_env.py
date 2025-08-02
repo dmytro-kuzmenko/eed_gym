@@ -1,21 +1,13 @@
-
+#!/usr/bin/env python3
 """
 Empathic Ethical Disobedience Gymnasium Environment
 ===================================================
 
 Blueprint 1: Empathic Ethical Disobedience (EED)
 
-A simulation where a robot decides whether to comply with, refuse,
-clarify, or propose an alternative to human-issued commands that may be
-safe or risky. The environment provides:
-- Human affect (valence, arousal)
-- Trust
-- Risk estimates (noisy)
-- Blame cost model
-- Explanatory refusal mechanism (empathetic vs constructive style)
-
-Author: (Your Name)
-License: MIT (adjust as needed)
+- Optional valence ablation via observe_valence flag.
+  * observe_valence=True  (default): valence is in observations; threshold uses valence.
+  * observe_valence=False: valence removed from observations; threshold ignores valence.
 """
 
 from __future__ import annotations
@@ -45,8 +37,8 @@ class RewardWeights:
     explanation_bonus: float = 0.4
     clarify_cost: float = 0.15
     alt_progress_bonus: float = 0.25
-    empathetic_style_bonus: float = 0.05      # slight bonus for using empathic wording at right time
-    constructive_style_bonus: float = 0.03    # slight bonus for correct constructive style usage
+    empathetic_style_bonus: float = 0.05
+    constructive_style_bonus: float = 0.03
 
 @dataclass
 class SimParams:
@@ -66,7 +58,7 @@ class SimParams:
     risk_threshold_base: float = 0.5
     risk_threshold_trust_coeff: float = -0.2
     risk_threshold_valence_coeff: float = 0.3
-    safety_violation_prob: float = 0.7  # probability a risky compliance causes violation
+    safety_violation_prob: float = 0.7
 
 @dataclass
 class HumanProfile:
@@ -83,19 +75,11 @@ DEFAULT_PROFILES = [
     HumanProfile(risk_tolerance=0.4, impatience=0.7, receptiveness=0.9, consistency=0.85, name="ImpatientReceptive"),
 ]
 
+HOLDOUT_PROFILE = HumanProfile(risk_tolerance=0.6, impatience=0.2, receptiveness=0.3, consistency=0.6, name="UnpredictableDetached")
+
 # ============================================================
 # Action Space Definition
 # ============================================================
-
-# Discrete actions:
-# 0 - COMPLY
-# 1 - REFUSE_PLAIN
-# 2 - REFUSE_EXPLAIN (style chosen internally based on valence, but can expose)
-# 3 - ASK_CLARIFY
-# 4 - PROPOSE_ALTERNATIVE
-# 5 - REFUSE_EXPLAIN_EMPATHETIC (optional style explicit)
-# 6 - REFUSE_EXPLAIN_CONSTRUCTIVE (optional style explicit)
-# You can toggle whether to use explicit style actions.
 
 COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, ASK_CLARIFY, PROPOSE_ALTERNATIVE, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE = range(7)
 
@@ -117,24 +101,15 @@ def default_blame(command_risky: bool,
                   action: int,
                   safety_violation: bool,
                   unjustified_refusal: bool) -> float:
-    """
-    Heuristic blame scores. Replace with regression learned from survey if desired.
-    """
-    # Unsafe obedience -> high blame
     if action == COMPLY:
         if command_risky and safety_violation:
             return 1.0
-        return 0.05  # low blame for safe compliance
-    # Refusals / alternatives
+        return 0.05
     if action in (REFUSE_PLAIN, REFUSE_EXPLAIN, PROPOSE_ALTERNATIVE,
                   REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
         if unjustified_refusal:
-            # refused safe command
-            if action in (REFUSE_EXPLAIN, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
-                return 0.55
-            return 0.7
+            return 0.55 if action in (REFUSE_EXPLAIN, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE) else 0.7
         else:
-            # justified refusal
             if action in (REFUSE_EXPLAIN, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
                 return 0.1
             elif action == PROPOSE_ALTERNATIVE:
@@ -151,18 +126,11 @@ def default_blame(command_risky: bool,
 
 class EmpathicDisobedienceEnv(gym.Env):
     """
-    Observation vector:
-    [
-      progress,
-      risk_estimate,
-      valence,
-      arousal,
-      trust,
-      last_action_onehot(7),
-      last_outcome_flags(3: success, violation, refusal),
-      dynamic_threshold
-    ]
-    = 1 +1 +2 +1 +7 +3 +1 = 16 dims
+    Observation layout (with observe_valence=True):
+      [progress, risk_estimate, valence, arousal, trust,
+       last_action_onehot(num_actions), last_outcome_flags(3), dynamic_threshold]
+    If observe_valence=False, the 'valence' element is removed from the observation,
+    and the dynamic_threshold ignores valence.
     """
     metadata = {"render_modes": []}
 
@@ -171,28 +139,33 @@ class EmpathicDisobedienceEnv(gym.Env):
                  sim_params: SimParams = SimParams(),
                  profiles: Optional[List[HumanProfile]] = None,
                  seed: Optional[int] = None,
-                 explicit_explanation_style: bool = True):
+                 explicit_explanation_style: bool = True,
+                 observe_valence: bool = True):
         super().__init__()
         self.rw = reward_weights
         self.sp = sim_params
         self.explicit_explanation_style = explicit_explanation_style
+        self.observe_valence = observe_valence
         self.rng = random.Random(seed)
         self.np_rng = np.random.default_rng(seed)
         self.profiles = profiles or DEFAULT_PROFILES
 
-        # Choose action space size
+        # Action/observation sizing
         self.num_actions = 7 if explicit_explanation_style else 5
         self.action_space = spaces.Discrete(self.num_actions)
 
-        # Observation space
-        self.obs_dim = 16 if explicit_explanation_style else 15
+        core_dim = 5 if self.observe_valence else 3
+        self.obs_dim = core_dim + self.num_actions + 3 + 1
+
+        # Spaces
         high = np.ones(self.obs_dim, dtype=np.float32) * 2.0
         low = -high
+
         # Keep some always positive
         low[0] = 0.0  # progress
         low[1] = 0.0  # risk_estimate
         low[2] = -1.0 # valence
-        low[3] = 0.0  # arousal
+        low[3] = 0  # arousal
         low[4] = 0.0  # trust
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
@@ -206,7 +179,6 @@ class EmpathicDisobedienceEnv(gym.Env):
     def _sample_command(self):
         base = self.sp.base_risk_prob
         p_risky = (base + self.profile.risk_tolerance) / 2
-        # invert with inconsistency
         if self.rng.random() > self.profile.consistency:
             p_risky = 1 - p_risky
         self.command_risky = self.rng.random() < p_risky
@@ -217,9 +189,12 @@ class EmpathicDisobedienceEnv(gym.Env):
         self.risk_estimate = float(np.clip(self.true_risk + noise, 0, 1))
 
     def _risk_threshold(self):
-        return (self.sp.risk_threshold_base +
-                self.sp.risk_threshold_trust_coeff * (self.trust - 0.5) +
-                self.sp.risk_threshold_valence_coeff * max(0, -self.valence))
+        trust_term = self.sp.risk_threshold_trust_coeff * (self.trust - 0.5)
+        if self.observe_valence:
+            val_term = self.sp.risk_threshold_valence_coeff * max(0, -self.valence)
+        else:
+            val_term = 0.0
+        return self.sp.risk_threshold_base + trust_term + val_term
 
     # ---------- Gym API ----------
 
@@ -261,8 +236,8 @@ class EmpathicDisobedienceEnv(gym.Env):
         else:
             if action == REFUSE_EXPLAIN:
                 explanation_used = True
-                # Choose style internally
-                if self.valence < self.sp.empathy_valence_threshold:
+                # If valence not observed, we still keep internal affect but style choice won't use it.
+                if self.observe_valence and self.valence < self.sp.empathy_valence_threshold:
                     explanation_empathic = True
                 else:
                     explanation_constructive = True
@@ -325,19 +300,16 @@ class EmpathicDisobedienceEnv(gym.Env):
         # Style-specific subtle adjustments
         style_bonus_flag = False
         if explanation_used:
-            if explanation_empathic and self.valence < self.sp.empathy_valence_threshold:
-                # correct empathetic style usage
+            if self.observe_valence and explanation_empathic and self.valence < self.sp.empathy_valence_threshold:
                 self.valence += 0.02
                 self.arousal -= 0.02
                 self.trust += 0.02
                 style_bonus_flag = True
-            elif explanation_constructive and self.valence >= self.sp.empathy_valence_threshold:
-                # constructive appropriate
+            elif explanation_constructive and (not self.observe_valence or self.valence >= self.sp.empathy_valence_threshold):
                 self.valence += 0.01
                 self.trust += 0.01
                 style_bonus_flag = True
             else:
-                # mismatched style small penalty
                 self.valence -= 0.01
                 self.trust -= 0.01
 
@@ -388,6 +360,10 @@ class EmpathicDisobedienceEnv(gym.Env):
             "threshold": self._risk_threshold()
         }
 
+        if not self.observe_valence:
+            self.valence = 0.0
+            self.arousal = 0.2
+
         if not done:
             if not clarify_used:
                 self.clarify_last = False
@@ -397,23 +373,22 @@ class EmpathicDisobedienceEnv(gym.Env):
         return obs, float(reward), done, truncated, info
 
     def _get_obs(self):
-        last_action_onehot = np.zeros(7, dtype=np.float32)
+        core = [self.progress, self.risk_estimate]
+        if self.observe_valence:
+            core.append(self.valence)
+            core.append(self.arousal)
+        core.extend([self.trust])
+        # core.extend([self.arousal, self.trust])
+        core = np.array(core, dtype=np.float32)
+
+        last_action_onehot = np.zeros(self.num_actions, dtype=np.float32)
         if self.last_action is not None:
             last_action_onehot[self.last_action] = 1.0
+
         last_outcome_flags = np.array(self.last_outcome, dtype=np.float32)
-        threshold = self._risk_threshold()
-        core = np.array([
-            self.progress,
-            self.risk_estimate,
-            self.valence,
-            self.arousal,
-            self.trust
-        ], dtype=np.float32)
-        obs = np.concatenate([core, last_action_onehot, last_outcome_flags, np.array([threshold], dtype=np.float32)])
-        if not self.explicit_explanation_style:
-            # If style actions removed, we also removed two action dims; we can optionally drop style info.
-            pass
-        return obs
+        threshold = np.array([self._risk_threshold()], dtype=np.float32)
+
+        return np.concatenate([core, last_action_onehot, last_outcome_flags, threshold])
 
     def render(self):
         pass

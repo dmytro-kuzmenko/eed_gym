@@ -32,7 +32,7 @@ except ImportError:
     wandb = None
 
 from empathic_disobedience_env import (
-    EmpathicDisobedienceEnv,
+    EmpathicDisobedienceEnv, HOLDOUT_PROFILE,
     COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, ASK_CLARIFY, PROPOSE_ALTERNATIVE,
     REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE
 )
@@ -211,7 +211,16 @@ def compute_refusal_precision_recall(records: List[EpisodeRecord]) -> Dict[str,f
         "eval/refusal_fn": fn
     }
 
-def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=30, out_dir="eval_plots"):
+def make_holdout_env(env: EmpathicDisobedienceEnv) -> EmpathicDisobedienceEnv:
+    env_clone = EmpathicDisobedienceEnv(
+        reward_weights=env.rw,
+        sim_params=env.sp,
+        explicit_explanation_style=env.explicit_explanation_style
+    )
+    env_clone.profiles = [HOLDOUT_PROFILE]
+    return env_clone
+
+def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=30, out_dir="eval_plots", run_holdout=True):
     os.makedirs(out_dir, exist_ok=True)
     records = run_episodes(model, env, n_episodes)
     scalars = compute_scalar_metrics(records)
@@ -231,17 +240,43 @@ def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=
         else:
             fn(records, path)
 
-    # Log to wandb if available
     artifact_paths = {}
     if wandb_run is not None:
         log_dict = {}
-        log_dict.update(scalars)
-        log_dict.update(pr)
+        # log_dict.update(scalars)
+        # log_dict.update(pr)
         for fname in plots.keys():
             path = os.path.join(out_dir, fname)
             log_dict[f"plots/{fname}"] = wandb.Image(path) if wandb is not None else path
             artifact_paths[fname] = path
         wandb_run.log(log_dict)
+
+    all_rows = []
+    all_rows.append({
+        "scope": "main",
+        **scalars,
+        **pr
+    })
+
+    if run_holdout:
+        holdout_env = make_holdout_env(env)
+        holdout_records = run_episodes(model, holdout_env, n_episodes)
+        holdout_scalars = compute_scalar_metrics(holdout_records)
+        holdout_pr = compute_refusal_precision_recall(holdout_records)
+
+        # holdout_log_dict = {}
+        # holdout_log_dict.update({f"holdout/{k}": v for k, v in holdout_scalars.items()})
+        # holdout_log_dict.update({f"holdout/{k}": v for k, v in holdout_pr.items()})
+        all_rows.append({
+            "scope": "holdout",
+            **holdout_scalars,
+            **holdout_pr
+        })
+
+    if wandb_run is not None:
+        columns = list(all_rows[0].keys())
+        table = wandb.Table(columns=columns, data=[[row[col] for col in columns] for row in all_rows])
+        wandb_run.log({"eval/table": table})
 
     return {
         "scalars": scalars,
