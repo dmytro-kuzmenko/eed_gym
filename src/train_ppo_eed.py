@@ -44,13 +44,14 @@ class EpisodeStatsWrapper(VecEnvWrapper):
 
 class WandbLoggingCallback(BaseCallback):
     def __init__(self, eval_env_fn, eval_interval=10000, eval_episodes=10,
-                 reward_weights: RewardWeights = None, sim_params: SimParams = None,
+                 reward_weights: RewardWeights = None, sim_params: SimParams = None, no_curriculum = False,
                  verbose=0):
         super().__init__(verbose)
         self.eval_env_fn = eval_env_fn
         self.eval_interval = eval_interval
         self.eval_episodes = eval_episodes
         self.last_eval = 0
+        self.no_curriculum = no_curriculum
         self.rw = reward_weights
         self.sim = sim_params
 
@@ -91,7 +92,8 @@ class WandbLoggingCallback(BaseCallback):
     def _on_step(self) -> bool:
         total_steps = self.num_timesteps
         progress_frac = total_steps / self.model._total_timesteps
-        schedule_reward_weights(self.rw, progress_frac)
+        if not self.no_curriculum:
+            schedule_reward_weights(self.rw, progress_frac)
         if total_steps - self.last_eval >= self.eval_interval:
             self.last_eval = total_steps
             metrics = self.evaluate_policy()
@@ -199,8 +201,21 @@ class WandbLoggingCallback(BaseCallback):
         return metrics
 
 # --------------------------------------------------------------------------- #
-def make_env(rw: RewardWeights, sp: SimParams, seed, observe_valence):
-    return lambda: EmpathicDisobedienceEnv(rw, sp, observe_valence=observe_valence, seed=seed)
+# def make_env(rw: RewardWeights, sp: SimParams, seed, observe_valence):
+#     return lambda: EmpathicDisobedienceEnv(rw, sp, observe_valence=observe_valence, seed=seed)
+def make_env(rw, sp, seed, observe_valence, no_clarify_alt):
+    def _thunk():
+        env = EmpathicDisobedienceEnv(
+            reward_weights=rw,
+            sim_params=sp,
+            observe_valence=observe_valence,
+            explicit_explanation_style=True,
+            disable_clarify_alt=no_clarify_alt
+        )
+        if seed is not None:
+            env.reset(seed=seed)
+        return env
+    return _thunk
 
 # --------------------------------------------------------------------------- #
 def dump_run_config(run, rw, sp, hps, file="run_config.yaml"):
@@ -228,6 +243,12 @@ def main():
     p.add_argument("--name",   default="eed_ppo")
     p.add_argument("--recurrent", action="store_true",
                    help="switch to RecurrentPPO + MlpLstmPolicy")
+    p.add_argument("--no-curriculum", action="store_true",
+                    help="Disable reward-weight curriculum")
+    p.add_argument("--no-clarify-alt", action="store_true",
+                    help="Remove ASK_CLARIFY and PROPOSE_ALTERNATIVE actions")
+    p.add_argument("--no-trust-penalty", action="store_true",
+                    help="Set trust_deviation weight to 0")
     p.add_argument("--seeds",  type=int, default=1)
     p.add_argument("--project",default="eed_gym")
     p.add_argument("--entity")
@@ -257,7 +278,9 @@ def main():
     base_sim = SimParams()
 
     for seed in range(args.seeds):
-        rw  = RewardWeights(**base_rw.__dict__)      # deep copy
+        rw  = RewardWeights(**base_rw.__dict__)
+        if args.no_trust_penalty:
+            rw.trust_deviation = 0.0
         sim = SimParams(**base_sim.__dict__)
 
         run = wandb.init(project=args.project, entity=args.entity,
@@ -274,7 +297,7 @@ def main():
 
         dump_run_config(run, rw, sim, hps)
 
-        vec = EpisodeStatsWrapper(DummyVecEnv([make_env(rw, sim, seed, args.observe_valence)]))
+        vec = EpisodeStatsWrapper(DummyVecEnv([make_env(rw, sim, seed, args.observe_valence, args.no_clarify_alt)]))
 
         model = ALG(
             hps["policy"], vec,
@@ -292,14 +315,17 @@ def main():
 
         cb = WandbLoggingCallback(
                 eval_env_fn=lambda: EmpathicDisobedienceEnv(
-                        reward_weights=rw, sim_params=sim,
-                        observe_valence=args.observe_valence),
+                    reward_weights=rw, sim_params=sim,
+                    observe_valence=args.observe_valence, 
+                    disable_clarify_alt=args.no_clarify_alt
+                ),
                 eval_interval=args.eval_interval,
                 eval_episodes=args.eval_episodes,
+                no_curriculum=args.no_curriculum,
                 reward_weights=rw, sim_params=sim)
 
         model.learn(total_timesteps=args.total_steps, callback=cb)
-        fname = f"{args.name}{'_lstm' if args.recurrent else ''}_seed{seed}.zip"
+        fname = f"ckpts/{args.name}{'_lstm' if args.recurrent else ''}_seed{seed}.zip"
         model.save(fname)
         wandb.finish()
 

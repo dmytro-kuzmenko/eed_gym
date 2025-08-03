@@ -14,6 +14,9 @@ Example
 """
 
 import argparse, numpy as np
+import os, glob, json, math
+import sys
+from scipy.stats import t
 from scipy.stats import spearmanr
 from empathic_disobedience_env import (
     EmpathicDisobedienceEnv, HOLDOUT_PROFILE,
@@ -98,6 +101,18 @@ def evaluate_policy(agent, env, n_episodes=30):
 
     mean_trust = np.mean([r["trust_mean"] for r in rolls])
 
+    metrics = dict(
+        mean_reward      = float(mean_reward),
+        mean_refusals    = float(mean_refusals),
+        unsafe_rate      = float(unsafe_rate),
+        justified_ratio  = float(justified_ratio),
+        precision        = float(precision),
+        recall           = float(recall),
+        f1               = float(f1),
+        calibration_rho  = float(cal_rho),
+        mean_trust       = float(mean_trust),
+    )
+
     print(f"episodes               : {n_episodes}")
     print(f"mean reward            : {mean_reward:8.3f}")
     print(f"mean refusals / ep     : {mean_refusals:8.2f}")
@@ -108,6 +123,63 @@ def evaluate_policy(agent, env, n_episodes=30):
     print(f"refusal F1             : {f1:8.2f}")
     print(f"calibration Spearman ρ : {cal_rho:8.2f}")
     print(f"mean trust             : {mean_trust:8.2f}")
+
+    return metrics
+
+def evaluate_directory(dir_path, args):
+    """Loop over *.zip in dir_path, aggregate mean ± std ± 95 % CI, save JSON."""
+    zips = sorted(glob.glob(os.path.join(dir_path, "*.zip")))
+    if not zips:
+        raise ValueError(f"No .zip files found in {dir_path}")
+
+    results = []
+    for wp in zips:
+        # fresh env for every seed (safer for RNG state)
+        env = EmpathicDisobedienceEnv(
+            observe_valence=args.observe_valence,
+            disable_clarify_alt=args.no_clarify_alt
+        )
+        if args.holdout:
+            env.profiles = [HOLDOUT_PROFILE]
+
+        # ----- load agent (re-uses your existing logic) -----
+        from stable_baselines3 import PPO
+        try:
+            from sb3_contrib import RecurrentPPO
+        except ImportError:
+            RecurrentPPO = None
+
+        is_recurrent = args.recurrent or "_lstm" in wp
+        if is_recurrent and RecurrentPPO is None:
+            raise ValueError("sb3-contrib not installed but recurrent model requested")
+        AgentCls = RecurrentPPO if is_recurrent else PPO
+        agent = AgentCls.load(wp, env=env)
+
+        m = evaluate_policy(agent, env, n_episodes=args.episodes)
+        m["model"] = os.path.basename(wp)         # keep seed name
+        results.append(m)
+        print(f"{m['model']:>20s}  reward={m['mean_reward']:.2f}  F1={m['f1']:.2f}")
+
+    # -------- aggregate --------
+    n = len(results)
+    agg = {}
+    for k in results[0]:
+        if k == "model":          # skip label
+            continue
+        vals = np.array([r[k] for r in results])
+        mean = vals.mean()
+        std  = vals.std(ddof=1)
+        ci   = t.ppf(0.975, n-1) * std / math.sqrt(n) if n > 1 else 0.0
+        agg[k] = {"mean": float(mean), "std": float(std), "ci95": float(ci)}
+
+    print("\n--- aggregated (mean ± std, 95 % CI half-width) ---")
+    for k, v in agg.items():
+        print(f"{k:20s}: {v['mean']:.3f} ± {v['std']:.3f}  (±{v['ci95']:.3f})")
+
+    out = os.path.join(dir_path, "eval_summary.json")
+    with open(out, "w") as fh:
+        json.dump({"individual": results, "aggregate": agg}, fh, indent=2)
+    print(f"\nSaved summary to {out}")
 
 # --------------------------------------------------------------------------- #
 if __name__ == "__main__":
@@ -120,13 +192,24 @@ if __name__ == "__main__":
                     help="Force model loader to treat weights as RecurrentPPO")
     pa.add_argument("--weights", type=str,
                     help="Path to SB-3 model (.zip). Omit when using --policy.")
+    pa.add_argument("--no-clarify-alt", action="store_true",
+                    help="Remove ASK_CLARIFY and PROPOSE_ALTERNATIVE actions")
+    pa.add_argument("--dir", type=str,
+                help="Folder of .zip checkpoints (evaluates & aggregates)")
     pa.add_argument("--policy",
                     choices=["always_comply","refuse_risky","threshold"],
                     help="Run a built-in heuristic instead of a model.")
     args = pa.parse_args()
 
+    if args.dir:
+        evaluate_directory(args.dir, args)
+        sys.exit(0)      # nothing else to do
+
     # ---------- env ---------- #
-    env = EmpathicDisobedienceEnv(observe_valence=args.observe_valence)
+    env = EmpathicDisobedienceEnv(
+        observe_valence=args.observe_valence,
+        disable_clarify_alt=args.no_clarify_alt
+    )
     if args.holdout:
         env.profiles = [HOLDOUT_PROFILE]
 

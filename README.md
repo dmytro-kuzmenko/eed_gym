@@ -54,8 +54,20 @@ numpy
 
 ### PPO 
 
+Flags
+--observe-valence
+--recurrent
+--no-curriculum
+--no-clarify-alt
+--no-trust-penalty
+
+eval::
+python simple_eval.py --episodes 100 --holdout --weights ./ckpts/ppo_no_trust_penalty_600K_seed0.zip
+
 ```bash
-python train_ppo_eed.py --total-steps 600000 --eval-interval 1000 --eval-episodes 50 --seeds 1
+python train_ppo_eed.py --observe-valence --name ppo_no_curr_600K --seeds 1 --no-curriculum
+python train_ppo_eed.py --observe-valence --name ppo_no_clarify_alt_600K --seeds 1 --no-clarify-alt
+python train_ppo_eed.py --observe-valence --name ppo_no_trust_penalty_600K --seeds 1 --no-trust-penalty
 
 python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250803 --observe-valence
 
@@ -71,8 +83,12 @@ python train_ppo_eed.py --recurrent --observe-valence --name ppo_lstm_600K_v0
 ```
 
 ### PPO eval
+
+DIR eval
+python simple_eval.py --dir ckpts/ppo_core_600K_trust_tweaked --episodes 100
+
 ```bash
-python simple_eval.py --episodes 100 --holdout --weights ./test_non_masked_600K_v1_0.zip
+python simple_eval.py --episodes 100 --holdout --weights ./ckpts/ppo_no_curr_600K_seed0.zip
 python simple_eval.py --episodes 100 --holdout --weights ./test_masked_600K_v1_0.zip
 
 python simple_eval.py --episodes 100 --holdout --weights ./ppo_lstm_600K_v0_lstm_seed0.zip

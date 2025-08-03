@@ -140,7 +140,8 @@ class EmpathicDisobedienceEnv(gym.Env):
                  profiles: Optional[List[HumanProfile]] = None,
                  seed: Optional[int] = None,
                  explicit_explanation_style: bool = True,
-                 observe_valence: bool = True):
+                 observe_valence: bool = True,
+                 disable_clarify_alt: bool = False):
         super().__init__()
         self.rw = reward_weights
         self.sp = sim_params
@@ -151,8 +152,29 @@ class EmpathicDisobedienceEnv(gym.Env):
         self.profiles = profiles or DEFAULT_PROFILES
 
         # Action/observation sizing
-        self.num_actions = 7 if explicit_explanation_style else 5
+        if disable_clarify_alt:
+            # keep the indices you still want
+            self.allowed_actions = [
+                COMPLY,
+                REFUSE_PLAIN,
+                REFUSE_EXPLAIN,
+                REFUSE_EXPLAIN_EMPATHETIC,
+                REFUSE_EXPLAIN_CONSTRUCTIVE,
+            ]
+            self.num_actions = len(self.allowed_actions)      # 5
+        else:
+            self.allowed_actions = list(range(7))             # original 7
+            self.num_actions = 7
+
         self.action_space = spaces.Discrete(self.num_actions)
+        # self.num_actions = 7 if explicit_explanation_style else 5
+
+        # if disable_clarify_alt:
+        #     del ACTION_NAMES[PROPOSE_ALTERNATIVE]
+        #     del ACTION_NAMES[ASK_CLARIFY]
+        #     self.num_actions -= 2
+
+        # self.action_space = spaces.Discrete(self.num_actions)
 
         core_dim = 5
         self.obs_dim = core_dim + self.num_actions + 3 + 1
