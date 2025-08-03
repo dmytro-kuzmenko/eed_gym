@@ -54,13 +54,49 @@ numpy
 
 ## 5. Quick Start
 
+### PPO 
+
 ```bash
 python train_ppo_eed.py --total-steps 600000 --eval-interval 1000 --eval-episodes 50 --seeds 1
 
-python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250802 --observe-valence
+python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250803 --observe-valence
+
+python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250803
+
+python train_ppo_eed.py --total-steps 20000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name tmp_test_ablated
 ```
 
+### PPO LSTM
+#### Train recurrent agent
+```bash
+python train_ppo_eed.py --recurrent --observe-valence --name ppo_lstm_600K_v0
+```
+
+### PPO eval
+```bash
+python simple_eval.py --episodes 100 --holdout --weights ./test_non_masked_600K_v1_0.zip
+python simple_eval.py --episodes 100 --holdout --weights ./test_masked_600K_v1_0.zip
+
+python simple_eval.py --episodes 100 --holdout --weights ./ppo_lstm_600K_v0_lstm_seed0.zip
+```
+
+
+
+
+#### Evaluate
+python simple_eval.py --weights ppo_lstm_seed0.zip --episodes 100
+
+
+### Baseline heuristics eval
+python heuristic_run.py --policy always_comply
+python heuristic_run.py --policy refuse_risky
+python heuristic_run.py --policy threshold
+
+python simple_eval.py --holdout --episodes 100 --policy refuse_risky
+python simple_eval.py --holdout --episodes 100 --policy always_comply
+
 ---
+
 
 ## Environment Dynamics (Simplified)
 

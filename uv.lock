@@ -236,6 +236,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "gymnasium" },
+    { name = "sb3-contrib" },
     { name = "scipy" },
     { name = "stable-baselines3" },
     { name = "torch" },
@@ -245,6 +246,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "gymnasium", specifier = ">=1.1.1" },
+    { name = "sb3-contrib", specifier = ">=2.7.0" },
     { name = "scipy", specifier = ">=1.16.0" },
     { name = "stable-baselines3", specifier = ">=2.6.0" },
     { name = "torch", specifier = ">=2.7.1" },
@@ -851,6 +853,18 @@ wheels = [
 ]
 
 [[package]]
+name = "sb3-contrib"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "stable-baselines3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/23/2831ccecc8fc2fcda401804f3ed1dc3b81f7c4ad3cb32dc6b1cd79f91c49/sb3_contrib-2.7.0.tar.gz", hash = "sha256:87281ae64e6965e46ac24b58778241d2b07b29996044491267ed844c1a75acfe", size = 90289, upload-time = "2025-07-25T13:02:07.208Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/25/df1f407742dca9a649bedcf6f06e74f2306c7854c5ad730497b79e332b99/sb3_contrib-2.7.0-py3-none-any.whl", hash = "sha256:fc5b5cffc7908c7961a73daea8496f5bf2fe69301bc3e7ca71522549eb7feb77", size = 93173, upload-time = "2025-07-25T13:02:04.407Z" },
+]
+
+[[package]]
 name = "scipy"
 version = "1.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -930,7 +944,7 @@ wheels = [
 
 [[package]]
 name = "stable-baselines3"
-version = "2.6.0"
+version = "2.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cloudpickle" },
@@ -940,9 +954,9 @@ dependencies = [
     { name = "pandas" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/df/25/e71fabe1fdce82118a12bd8a92900d9b5c33d2a7e545ebcf5a582a5d23e9/stable_baselines3-2.6.0.tar.gz", hash = "sha256:972ef537a9a8f2b9de06cdca87ef1f33df5fc8239cfe64fed88976d7c799c2f7", size = 214085, upload-time = "2025-03-24T14:33:14.562Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/56/cc/9a334071fae143bc7177e17a3191db83c1a4bf9038b09c4c5a34e427ca33/stable_baselines3-2.7.0.tar.gz", hash = "sha256:5258561e5becd15234274262cf09fcb9a082a73c2c67a85322f5652a05195ec4", size = 219012, upload-time = "2025-07-25T09:54:35.113Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/60/6900e8186168e6e23a2125655fb4fe53130256480cc7950dadcee030cd67/stable_baselines3-2.6.0-py3-none-any.whl", hash = "sha256:d4a4c95b5593c6135a5764767d829498677559069110aa3768fe1254f1c457e3", size = 184525, upload-time = "2025-03-24T14:33:12.437Z" },
+    { url = "https://files.pythonhosted.org/packages/89/df/6b074e5b8e8437aac0b05e12749565f4613152016daddd45d414269b09d6/stable_baselines3-2.7.0-py3-none-any.whl", hash = "sha256:3de94fab840b3eb379a352c8d9b390998686d2fcb41de36298066935eef94bea", size = 187216, upload-time = "2025-07-25T09:54:30.55Z" },
 ]
 
 [[package]]

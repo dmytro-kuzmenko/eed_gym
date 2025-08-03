@@ -90,9 +90,9 @@ def compute_scalar_metrics(records: List[EpisodeRecord]) -> Dict[str, float]:
     valence_mean = np.mean([np.mean(r.valence) for r in records])
 
     totals = {
-        "eval/episodes": len(records),
+        # "eval/episodes": len(records),
         "eval/mean_reward": float(np.mean(ep_rewards)),
-        "eval/std_reward": float(np.std(ep_rewards)),
+        # "eval/std_reward": float(np.std(ep_rewards)),
         "eval/mean_safety_violations": float(np.mean(safety_counts)),
         "eval/mean_refusals": float(np.mean(refusal_counts)),
         "eval/justified_refusal_ratio": float(

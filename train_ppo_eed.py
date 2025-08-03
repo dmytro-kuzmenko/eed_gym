@@ -1,95 +1,46 @@
+#!/usr/bin/env python3
 """
-train_ppo_eed.py  (Enhanced Logging + Precision/Recall)
-
-Adds:
-- Precision / Recall / F1 for refusal decisions (true = true_risk > threshold).
-- TP/FP/FN counts.
-
-(Other features unchanged.)
+train_eed.py  – PPO and RecurrentPPO (LSTM) trainer with enhanced WandB logging.
 """
 
-import argparse
-import os
-import numpy as np
+import argparse, yaml, numpy as np, wandb
+from pathlib import Path
 from scipy.stats import spearmanr
-
-import wandb
-from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnvWrapper
 from stable_baselines3.common.callbacks import BaseCallback
-
 from empathic_disobedience_env import (
     EmpathicDisobedienceEnv, RewardWeights, SimParams,
-    COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, ASK_CLARIFY, PROPOSE_ALTERNATIVE,
+    COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, PROPOSE_ALTERNATIVE,
     REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE
 )
 
-import yaml
-from pathlib import Path
-
-def dump_run_config(run, rw, sim, static_hparams, out_name="run_config.yaml"):
-    data = {
-        "seed": run.config["seed"],
-        "total_steps": run.config["total_steps"],
-        "eval_interval": run.config["eval_interval"],
-        "algo": static_hparams["algo"],
-        "policy": static_hparams["policy"],
-        "ppo_hparams": {
-            k: static_hparams[k] for k in [
-                "n_steps","batch_size","learning_rate","gamma",
-                "gae_lambda","clip_range","ent_coef","vf_coef"
-            ]
-        },
-        "reward_weights_init": rw.__dict__,
-        "sim_params": sim.__dict__,
-        "curriculum": "safety & blame scaled linearly 0.6→1.0 over first 30% steps"
-    }
-    Path(out_name).write_text(yaml.safe_dump(data, sort_keys=False))
-    # Log as artifact or file
-    if run is not None:
-        wandb.save(out_name)              # quick method
-        # OR artifact route:
-        art = wandb.Artifact(f"config_seed_{data['seed']}", type="config")
-        art.add_file(out_name)
-        run.log_artifact(art)
-
-
+# --------------------------------------------------------------------------- #
 REFUSAL_ACTIONS = {
     REFUSE_PLAIN, REFUSE_EXPLAIN, PROPOSE_ALTERNATIVE,
     REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE
 }
 
-def schedule_reward_weights(rw: RewardWeights, progress_frac: float):
-    if progress_frac < 0.3:
-        scale = 0.6 + 0.4 * (progress_frac / 0.3)
-    else:
-        scale = 1.0
-    rw.safety = 6.0 * scale
+def schedule_reward_weights(rw: RewardWeights, frac: float):
+    scale = 0.6 + 0.4 * min(frac / 0.3, 1.0)
+    rw.safety = 8.0 * scale          # you set 8.0
     rw.blame  = 2.0 * scale
     return rw
 
+# --------------------------------------------------------------------------- #
 class EpisodeStatsWrapper(VecEnvWrapper):
-    def __init__(self, venv):
-        super().__init__(venv)
-        self.reset_stats()
-    def reset_stats(self):
-        self.ep_rewards = []
-        self.ep_lengths = []
-        self.current_ep_reward = np.zeros(self.num_envs)
-        self.current_ep_len = np.zeros(self.num_envs)
+    def __init__(self, venv):               super().__init__(venv); self.reset_stats()
+    def reset_stats(self):                  self.ep_rewards, self.ep_lengths = [], []; self.current_ep_reward = np.zeros(self.num_envs); self.current_ep_len = np.zeros(self.num_envs)
     def step_wait(self):
-        obs, rewards, dones, infos = self.venv.step_wait()
-        self.current_ep_reward += rewards
-        self.current_ep_len += 1
-        for i, done in enumerate(dones):
-            if done:
-                self.ep_rewards.append(self.current_ep_reward[i])
-                self.ep_lengths.append(self.current_ep_len[i])
-                self.current_ep_reward[i] = 0
-                self.current_ep_len[i] = 0
-        return obs, rewards, dones, infos
-    def reset(self):
-        return self.venv.reset()
+        obs, rew, done, infos = self.venv.step_wait()
+        self.current_ep_reward += rew; self.current_ep_len += 1
+        for i, d in enumerate(done):
+            if d:
+                self.ep_rewards.append(self.current_ep_reward[i]); self.ep_lengths.append(self.current_ep_len[i])
+                self.current_ep_reward[i] = 0; self.current_ep_len[i] = 0
+        return obs, rew, done, infos
+    def reset(self):                         return self.venv.reset()
+
+# --------------------------------------------------------------------------- #
 
 class WandbLoggingCallback(BaseCallback):
     def __init__(self, eval_env_fn, eval_interval=10000, eval_episodes=10,
@@ -102,11 +53,6 @@ class WandbLoggingCallback(BaseCallback):
         self.last_eval = 0
         self.rw = reward_weights
         self.sim = sim_params
-
-    # def _log_reward_weights(self, step: int):
-    #     wandb.log({
-
-    #     }, step=step)
 
     def _on_training_start(self):
         sim_log = {
@@ -141,8 +87,6 @@ class WandbLoggingCallback(BaseCallback):
         data = {**sim_log}
         table = wandb.Table(columns=list(data.keys()), data=[[v for v in data.values()]])
         wandb.log({"init/param_table": table}, step=0)
-        # self._log_reward_weights(step=0)
-        # wandb.log(sim_log, step=0)
 
     def _on_step(self) -> bool:
         total_steps = self.num_timesteps
@@ -169,6 +113,10 @@ class WandbLoggingCallback(BaseCallback):
         arousal_means = []
         bin_counts = np.zeros(10)
         bin_refusals = np.zeros(10)
+        
+        risky_total, risky_refused, risky_complied = 0, 0, 0
+        violations_after_comply = 0
+
         for ep in range(self.eval_episodes):
             obs, info = env.reset()
             trust_traj = []
@@ -177,6 +125,16 @@ class WandbLoggingCallback(BaseCallback):
             for t in range(env.sp.max_steps):
                 action, _ = self.model.predict(obs, deterministic=True)
                 obs, r, done, trunc, info = env.step(int(action))
+
+                if info["command_risky"]:
+                    risky_total += 1
+                    if info["refused"]:
+                        risky_refused += 1
+                    else:
+                        risky_complied += 1
+                        if info["safety_violation"]:
+                            violations_after_comply += 1
+
                 rewards.append(r)
                 risk = info["risk_estimate"]
                 threshold_all.append(info["threshold"])
@@ -228,95 +186,123 @@ class WandbLoggingCallback(BaseCallback):
             "eval/calibration_spearman": float(spearman_corr if not np.isnan(spearman_corr) else 0),
             "eval/avg_threshold": float(np.mean(threshold_all)),
             "eval/avg_risk_estimate": float(np.mean(risk_all)),
-            "eval/refusal_precision": precision,
-            "eval/refusal_recall": recall,
             "eval/refusal_f1": f1,
         }
+        metrics["eval/risky_commands"] = risky_total
+        metrics["eval/risky_refused"] = risky_refused
+        metrics["eval/risky_complied"] = risky_complied
+        metrics["eval/violations_after_comply"] = violations_after_comply
+
         for i, rate in enumerate(refusal_rates):
             metrics[f"calibration/bin_{i}_refusal_rate"] = float(rate)
             metrics[f"calibration/bin_{i}_count"] = float(bin_counts[i])
         return metrics
 
-def make_env(reward_weights: RewardWeights, sim_params: SimParams, seed=None, observe_valence=None):
-    def _thunk():
-        env = EmpathicDisobedienceEnv(reward_weights=reward_weights, sim_params=sim_params, observe_valence=observe_valence)
-        if seed is not None:
-            env.reset(seed=seed)
-        return env
-    return _thunk
+# --------------------------------------------------------------------------- #
+def make_env(rw: RewardWeights, sp: SimParams, seed, observe_valence):
+    return lambda: EmpathicDisobedienceEnv(rw, sp, observe_valence=observe_valence, seed=seed)
 
+# --------------------------------------------------------------------------- #
+def dump_run_config(run, rw, sp, hps, file="run_config.yaml"):
+    cfg = dict(seed       = run.config["seed"],
+               total_steps= run.config["total_steps"],
+               eval_int   = run.config["eval_interval"],
+               algo       = hps["algo"],
+               policy     = hps["policy"],
+               ppo_hparams= {k: hps[k] for k in
+                             ["n_steps","batch_size","learning_rate","gamma",
+                              "gae_lambda","clip_range","ent_coef","vf_coef"]},
+               reward_weights_init = rw.__dict__,
+               sim_params          = sp.__dict__,
+               curriculum          = "safety & blame scaled 0.6→1.0 over first 30 %")
+    Path(file).write_text(yaml.safe_dump(cfg, sort_keys=False))
+    wandb.save(file)
+
+# --------------------------------------------------------------------------- #
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--total-steps", type=int, default=500000)
-    parser.add_argument("--eval-interval", type=int, default=20000)
-    parser.add_argument("--eval-episodes", type=int, default=10)
-    parser.add_argument("--observe-valence", action="store_true", help="Disable valence features")
-    parser.add_argument("--name", type=str, default="eed_ppo_default")
-    parser.add_argument("--seeds", type=int, default=1)
-    parser.add_argument("--project", type=str, default="eed_gym")
-    parser.add_argument("--policy", type=str, default="MlpPolicy", help="MlpPolicy or MlpLstmPolicy")
-    parser.add_argument("--entity", type=str, default=None)
-    args = parser.parse_args()
+    p = argparse.ArgumentParser()
+    p.add_argument("--total-steps",  type=int, default=600_000)
+    p.add_argument("--eval-interval",type=int, default=20_000)
+    p.add_argument("--eval-episodes",type=int, default=20)
+    p.add_argument("--observe-valence", action="store_true")
+    p.add_argument("--name",   default="eed_ppo")
+    p.add_argument("--recurrent", action="store_true",
+                   help="switch to RecurrentPPO + MlpLstmPolicy")
+    p.add_argument("--seeds",  type=int, default=1)
+    p.add_argument("--project",default="eed_gym")
+    p.add_argument("--entity")
+    args = p.parse_args()
 
-    base_reward_weights = RewardWeights()
-    sim_params = SimParams()
+    # -------- static hyper-params (shared between MLP & LSTM) ----------
+    hps = dict(
+        algo        = "RecurrentPPO" if args.recurrent else "PPO",
+        policy      = "MlpLstmPolicy" if args.recurrent else "MlpPolicy",
+        n_steps     = 128 if args.recurrent else 256,
+        batch_size  = 256,
+        learning_rate=3e-4,
+        gamma       = 0.99,
+        gae_lambda  = 0.95,
+        clip_range  = 0.2,
+        ent_coef    = 0.1,           # keep same as your latest runs
+        vf_coef     = 0.5,
+    )
 
-    static_hparams = {
-        "algo": "PPO",
-        "policy": args.policy,
-        "n_steps": 256,
-        "batch_size": 256,
-        "learning_rate": 3e-4,
-        "gamma": 0.99,
-        "gae_lambda": 0.95,
-        "clip_range": 0.2,
-        "ent_coef": 0.0,
-        "vf_coef": 0.5
-    }
+    # import the right ALG after we know --recurrent
+    if args.recurrent:
+        from sb3_contrib import RecurrentPPO as ALG
+    else:
+        from stable_baselines3 import PPO as ALG
+
+    base_rw  = RewardWeights()
+    base_sim = SimParams()
 
     for seed in range(args.seeds):
-        rw = RewardWeights(**{k: getattr(base_reward_weights, k) for k in base_reward_weights.__dataclass_fields__.keys()})
-        sim = SimParams(**{k: getattr(sim_params, k) for k in sim_params.__dataclass_fields__.keys()})
-        run = wandb.init(project=args.project,
-                         entity=args.entity,
-                         name=f"{args.name}_{seed}",
-                         config={
-                            **static_hparams,
+        rw  = RewardWeights(**base_rw.__dict__)      # deep copy
+        sim = SimParams(**base_sim.__dict__)
+
+        run = wandb.init(project=args.project, entity=args.entity,
+                         name=f"{args.name}{'_lstm' if args.recurrent else ''}_{seed}",
+                         config = {
+                            **hps,
                             "seed": seed,
                             "total_steps": args.total_steps,
                             "eval_interval": args.eval_interval,
                             "reward_weights_init": rw.__dict__,
-                            "sim_params": sim.__dict__
-                         },
-                         reinit=True)
-        dump_run_config(run, rw, sim, static_hparams)
+                            "sim_params":          sim.__dict__,
+                        }, 
+                        reinit=True)
 
-        vec_env = DummyVecEnv([make_env(rw, sim, seed, args.observe_valence)])
-        vec_env = EpisodeStatsWrapper(vec_env)
+        dump_run_config(run, rw, sim, hps)
 
-        model = PPO(args.policy, vec_env,
-                    n_steps=static_hparams["n_steps"],
-                    batch_size=static_hparams["batch_size"],
-                    learning_rate=static_hparams["learning_rate"],
-                    gamma=static_hparams["gamma"],
-                    gae_lambda=static_hparams["gae_lambda"],
-                    clip_range=static_hparams["clip_range"],
-                    ent_coef=static_hparams["ent_coef"],
-                    vf_coef=static_hparams["vf_coef"],
-                    verbose=1,
-                    seed=seed)
+        vec = EpisodeStatsWrapper(DummyVecEnv([make_env(rw, sim, seed, args.observe_valence)]))
 
-        callback = WandbLoggingCallback(
-            eval_env_fn=lambda: EmpathicDisobedienceEnv(reward_weights=rw, sim_params=sim, observe_valence=args.observe_valence),
-            eval_interval=args.eval_interval,
-            eval_episodes=args.eval_episodes,
-            reward_weights=rw,
-            sim_params=sim
+        model = ALG(
+            hps["policy"], vec,
+            n_steps      = hps["n_steps"],
+            batch_size   = hps["batch_size"],
+            learning_rate= hps["learning_rate"],
+            gamma        = hps["gamma"],
+            gae_lambda   = hps["gae_lambda"],
+            clip_range   = hps["clip_range"],
+            ent_coef     = hps["ent_coef"],
+            vf_coef      = hps["vf_coef"],
+            verbose      = 1,
+            seed         = seed,
         )
 
-        model.learn(total_timesteps=args.total_steps, callback=callback)
-        model.save(f"{args.name}_{seed}")
+        cb = WandbLoggingCallback(
+                eval_env_fn=lambda: EmpathicDisobedienceEnv(
+                        reward_weights=rw, sim_params=sim,
+                        observe_valence=args.observe_valence),
+                eval_interval=args.eval_interval,
+                eval_episodes=args.eval_episodes,
+                reward_weights=rw, sim_params=sim)
+
+        model.learn(total_timesteps=args.total_steps, callback=cb)
+        fname = f"{args.name}{'_lstm' if args.recurrent else ''}_seed{seed}.zip"
+        model.save(fname)
         wandb.finish()
 
+# --------------------------------------------------------------------------- #
 if __name__ == "__main__":
     main()

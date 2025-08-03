@@ -56,7 +56,7 @@ class SimParams:
     explanation_trust_boost: float = 0.05
     empathy_valence_threshold: float = -0.3
     risk_threshold_base: float = 0.5
-    risk_threshold_trust_coeff: float = -0.2
+    risk_threshold_trust_coeff: float = 0.1 #-0.2
     risk_threshold_valence_coeff: float = 0.3
     safety_violation_prob: float = 0.7
 
@@ -154,7 +154,7 @@ class EmpathicDisobedienceEnv(gym.Env):
         self.num_actions = 7 if explicit_explanation_style else 5
         self.action_space = spaces.Discrete(self.num_actions)
 
-        core_dim = 5 if self.observe_valence else 3
+        core_dim = 5
         self.obs_dim = core_dim + self.num_actions + 3 + 1
 
         # Spaces
@@ -165,7 +165,7 @@ class EmpathicDisobedienceEnv(gym.Env):
         low[0] = 0.0  # progress
         low[1] = 0.0  # risk_estimate
         low[2] = -1.0 # valence
-        low[3] = 0  # arousal
+        low[3] = 0.0  # arousal
         low[4] = 0.0  # trust
         self.observation_space = spaces.Box(low=low, high=high, dtype=np.float32)
 
@@ -190,10 +190,7 @@ class EmpathicDisobedienceEnv(gym.Env):
 
     def _risk_threshold(self):
         trust_term = self.sp.risk_threshold_trust_coeff * (self.trust - 0.5)
-        if self.observe_valence:
-            val_term = self.sp.risk_threshold_valence_coeff * max(0, -self.valence)
-        else:
-            val_term = 0.0
+        val_term = self.sp.risk_threshold_valence_coeff * max(0, -self.valence)
         return self.sp.risk_threshold_base + trust_term + val_term
 
     # ---------- Gym API ----------
@@ -237,7 +234,8 @@ class EmpathicDisobedienceEnv(gym.Env):
             if action == REFUSE_EXPLAIN:
                 explanation_used = True
                 # If valence not observed, we still keep internal affect but style choice won't use it.
-                if self.observe_valence and self.valence < self.sp.empathy_valence_threshold:
+                # self.observe_valence and 
+                if self.valence < self.sp.empathy_valence_threshold:
                     explanation_empathic = True
                 else:
                     explanation_constructive = True
@@ -300,12 +298,14 @@ class EmpathicDisobedienceEnv(gym.Env):
         # Style-specific subtle adjustments
         style_bonus_flag = False
         if explanation_used:
-            if self.observe_valence and explanation_empathic and self.valence < self.sp.empathy_valence_threshold:
+            # if self.observe_valence and explanation_empathic and self.valence < self.sp.empathy_valence_threshold:
+            if explanation_empathic and self.valence < self.sp.empathy_valence_threshold:
                 self.valence += 0.02
                 self.arousal -= 0.02
                 self.trust += 0.02
                 style_bonus_flag = True
-            elif explanation_constructive and (not self.observe_valence or self.valence >= self.sp.empathy_valence_threshold):
+            # (not self.observe_valence or )
+            elif explanation_constructive and self.valence >= self.sp.empathy_valence_threshold:
                 self.valence += 0.01
                 self.trust += 0.01
                 style_bonus_flag = True
@@ -337,6 +337,7 @@ class EmpathicDisobedienceEnv(gym.Env):
             - self.rw.clarify_cost * (1 if clarify_used else 0)
             + self.rw.alt_progress_bonus * (1 if alt_used else 0)
             + style_bonus
+            + (0.4 if (refusal and self.command_risky) else 0.0)   # justified-refusal bonus
         )
 
         self.last_action = action
@@ -349,6 +350,7 @@ class EmpathicDisobedienceEnv(gym.Env):
             "profile": self.profile.name,
             "command_risky": self.command_risky,
             "true_risk": self.true_risk,
+            "refused": refusal,
             "risk_estimate": self.risk_estimate,
             "safety_violation": safety_violation,
             "unjustified_refusal": unjustified_refusal,
@@ -359,10 +361,6 @@ class EmpathicDisobedienceEnv(gym.Env):
             "style_bonus": style_bonus,
             "threshold": self._risk_threshold()
         }
-
-        if not self.observe_valence:
-            self.valence = 0.0
-            self.arousal = 0.2
 
         if not done:
             if not clarify_used:
@@ -377,9 +375,14 @@ class EmpathicDisobedienceEnv(gym.Env):
         if self.observe_valence:
             core.append(self.valence)
             core.append(self.arousal)
+        else:
+            core.append(0.0)
+            core.append(0.2)
         core.extend([self.trust])
         # core.extend([self.arousal, self.trust])
         core = np.array(core, dtype=np.float32)
+
+        # print(core)
 
         last_action_onehot = np.zeros(self.num_actions, dtype=np.float32)
         if self.last_action is not None:
