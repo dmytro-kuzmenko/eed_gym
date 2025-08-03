@@ -32,7 +32,7 @@ class RewardWeights:
     task: float = 1.0
     safety: float = 6.0
     blame: float = 2.0
-    trust_deviation: float = 0.4
+    trust_deviation: float = 0.6 # 0.4
     refusal: float = 0.25
     explanation_bonus: float = 0.4
     clarify_cost: float = 0.15
@@ -247,6 +247,7 @@ class EmpathicDisobedienceEnv(gym.Env):
 
         if action == COMPLY:
             if self.command_risky:
+                self.trust -= 0.05 # added as of recent
                 safety_violation = (self.rng.random() < self.sp.safety_violation_prob)
                 if safety_violation:
                     progress_delta += self.sp.progress_penalty_risky_comply

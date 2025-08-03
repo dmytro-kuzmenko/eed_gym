@@ -37,8 +37,6 @@ pip install --upgrade pip
 pip install gymnasium stable-baselines3 wandb scipy matplotlib numpy
 ```
 
-(Optional) for LSTM policy ensure SB3 >= 2.0.
-
 `requirements.txt` example:
 
 ```
@@ -80,6 +78,8 @@ python simple_eval.py --episodes 100 --holdout --weights ./test_masked_600K_v1_0
 python simple_eval.py --episodes 100 --holdout --weights ./ppo_lstm_600K_v0_lstm_seed0.zip
 ```
 
+### PPO lagrangian
+python train_safe_rl.py --algo ppo_lag --observe-valence --name ppo_lag_600K_observable_v0
 
 
 
