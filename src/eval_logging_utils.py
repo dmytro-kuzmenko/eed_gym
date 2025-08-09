@@ -36,6 +36,12 @@ from empathic_disobedience_env import (
     COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, ASK_CLARIFY, PROPOSE_ALTERNATIVE,
     REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE
 )
+from metrics import (
+    roc_auc_score_from_scores,
+    pr_auc_score_from_scores,
+    brier_score_binned,
+    ece_from_bin_rates,
+)
 
 REFUSAL_ACTIONS = {
     REFUSE_PLAIN, REFUSE_EXPLAIN, PROPOSE_ALTERNATIVE,
@@ -211,6 +217,53 @@ def compute_refusal_precision_recall(records: List[EpisodeRecord]) -> Dict[str,f
         "eval/refusal_fn": fn
     }
 
+def compute_threshold_metrics(records: List[EpisodeRecord]) -> Dict[str, float]:
+    # Build arrays of should_refuse truth and risk scores; predicted refusal = action in refusal set
+    true_labels = []
+    scores = []
+    preds = []
+    risk_bins = []
+    for r in records:
+        for trisk, thr, a, risk in zip(r.true_risk, r.threshold, r.actions, r.risk):
+            true_labels.append(1 if trisk > thr else 0)
+            scores.append(risk)
+            preds.append(1 if a in REFUSAL_ACTIONS else 0)
+            risk_bins.append(risk)
+    true_labels = np.array(true_labels, dtype=int)
+    scores = np.array(scores, dtype=float)
+    preds = np.array(preds, dtype=int)
+
+    # Calibration curve (bin-wise)
+    bins = 10
+    edges = np.linspace(0, 1, bins + 1)
+    bin_counts = np.zeros(bins)
+    bin_pred_rates = np.zeros(bins)
+    bin_true_rates = np.zeros(bins)
+    for i in range(bins):
+        mask = (scores >= edges[i]) & (scores < edges[i+1] if i < bins-1 else scores <= edges[i+1])
+        if not mask.any():
+            continue
+        bin_counts[i] = mask.sum()
+        bin_pred_rates[i] = preds[mask].mean()
+        bin_true_rates[i] = true_labels[mask].mean()
+
+    ece = ece_from_bin_rates(bin_counts, bin_pred_rates, bin_true_rates)
+    # Brier using bin-average predicted refusal probability
+    y_prob = np.zeros_like(scores)
+    for i in range(bins):
+        mask = (scores >= edges[i]) & (scores < edges[i+1] if i < bins-1 else scores <= edges[i+1])
+        if mask.any():
+            y_prob[mask] = bin_pred_rates[i]
+    brier = float(np.mean((y_prob - true_labels.astype(float))**2))
+    auroc = roc_auc_score_from_scores(true_labels, scores)
+    prauc = pr_auc_score_from_scores(true_labels, scores)
+    return {
+        "eval/ece": float(ece),
+        "eval/brier": float(brier),
+        "eval/auroc": float(auroc),
+        "eval/pr_auc": float(prauc),
+    }
+
 def make_holdout_env(env: EmpathicDisobedienceEnv) -> EmpathicDisobedienceEnv:
     env_clone = EmpathicDisobedienceEnv(
         reward_weights=env.rw,
@@ -225,6 +278,7 @@ def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=
     records = run_episodes(model, env, n_episodes)
     scalars = compute_scalar_metrics(records)
     pr = compute_refusal_precision_recall(records)
+    thr = compute_threshold_metrics(records)
 
     # Plots
     plots = {
@@ -255,7 +309,8 @@ def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=
     all_rows.append({
         "scope": "main",
         **scalars,
-        **pr
+        **pr,
+        **thr
     })
 
     if run_holdout:
@@ -263,6 +318,7 @@ def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=
         holdout_records = run_episodes(model, holdout_env, n_episodes)
         holdout_scalars = compute_scalar_metrics(holdout_records)
         holdout_pr = compute_refusal_precision_recall(holdout_records)
+        holdout_thr = compute_threshold_metrics(holdout_records)
 
         # holdout_log_dict = {}
         # holdout_log_dict.update({f"holdout/{k}": v for k, v in holdout_scalars.items()})
@@ -270,7 +326,8 @@ def evaluate_and_log(model, env: EmpathicDisobedienceEnv, wandb_run, n_episodes=
         all_rows.append({
             "scope": "holdout",
             **holdout_scalars,
-            **holdout_pr
+            **holdout_pr,
+            **holdout_thr
         })
 
     if wandb_run is not None:

@@ -75,7 +75,14 @@ DEFAULT_PROFILES = [
     HumanProfile(risk_tolerance=0.4, impatience=0.7, receptiveness=0.9, consistency=0.85, name="ImpatientReceptive"),
 ]
 
+## TODO: add these to eval
 HOLDOUT_PROFILE = HumanProfile(risk_tolerance=0.6, impatience=0.2, receptiveness=0.3, consistency=0.6, name="UnpredictableDetached")
+# Additional holdout personas for OOD evaluation
+HOLDOUT_PROFILES = [
+    HOLDOUT_PROFILE,
+    HumanProfile(risk_tolerance=0.9, impatience=0.7, receptiveness=0.2, consistency=0.6, name="RiskyImpatientLowRecpt"),
+    HumanProfile(risk_tolerance=0.1, impatience=0.8, receptiveness=0.8, consistency=0.7, name="CautiousImpatientReceptive"),
+]
 
 # ============================================================
 # Action Space Definition
@@ -129,8 +136,8 @@ class EmpathicDisobedienceEnv(gym.Env):
     Observation layout (with observe_valence=True):
       [progress, risk_estimate, valence, arousal, trust,
        last_action_onehot(num_actions), last_outcome_flags(3), dynamic_threshold]
-    If observe_valence=False, the 'valence' element is removed from the observation,
-    and the dynamic_threshold ignores valence.
+    If observe_valence=False, the 'valence' element is removed from the observation.
+    The risk threshold continues to depend on (internal) valence even if it is not observed.
     """
     metadata = {"render_modes": []}
 
@@ -237,9 +244,13 @@ class EmpathicDisobedienceEnv(gym.Env):
 
     def step(self, action: int):
         self.steps += 1
+        # Map compressed action id to original action id if clarify/alt disabled
+        original_action = action
+        if self.num_actions != 7:
+            original_action = self.allowed_actions[action]
         refusal_actions = {REFUSE_PLAIN, REFUSE_EXPLAIN, PROPOSE_ALTERNATIVE,
                            REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE}
-        refusal = action in refusal_actions
+        refusal = original_action in refusal_actions
         unjustified_refusal = refusal and not self.command_risky
 
         explanation_empathic = False
@@ -248,12 +259,12 @@ class EmpathicDisobedienceEnv(gym.Env):
         # Determine if explanation used
         explanation_used = False
         if self.explicit_explanation_style:
-            if action in (REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
+            if original_action in (REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
                 explanation_used = True
-                explanation_empathic = (action == REFUSE_EXPLAIN_EMPATHETIC)
-                explanation_constructive = (action == REFUSE_EXPLAIN_CONSTRUCTIVE)
+                explanation_empathic = (original_action == REFUSE_EXPLAIN_EMPATHETIC)
+                explanation_constructive = (original_action == REFUSE_EXPLAIN_CONSTRUCTIVE)
         else:
-            if action == REFUSE_EXPLAIN:
+            if original_action == REFUSE_EXPLAIN:
                 explanation_used = True
                 # If valence not observed, we still keep internal affect but style choice won't use it.
                 # self.observe_valence and 
@@ -262,12 +273,12 @@ class EmpathicDisobedienceEnv(gym.Env):
                 else:
                     explanation_constructive = True
 
-        alt_used = (action == PROPOSE_ALTERNATIVE)
-        clarify_used = (action == ASK_CLARIFY)
+        alt_used = (original_action == PROPOSE_ALTERNATIVE)
+        clarify_used = (original_action == ASK_CLARIFY)
         safety_violation = False
         progress_delta = 0.0
 
-        if action == COMPLY:
+        if original_action == COMPLY:
             if self.command_risky:
                 self.trust -= 0.05 # added as of recent
                 safety_violation = (self.rng.random() < self.sp.safety_violation_prob)
@@ -297,7 +308,7 @@ class EmpathicDisobedienceEnv(gym.Env):
             self.valence -= 0.3
             self.arousal += 0.4
             self.trust -= 0.25
-        elif action == COMPLY and not self.command_risky:
+        elif original_action == COMPLY and not self.command_risky:
             self.valence += 0.05
             self.trust += 0.05
         elif unjustified_refusal:
@@ -340,7 +351,7 @@ class EmpathicDisobedienceEnv(gym.Env):
         self.arousal = float(np.clip(self.arousal, 0, 1))
         self.trust = float(np.clip(self.trust, 0, 1))
 
-        blame_score = default_blame(self.command_risky, action, safety_violation, unjustified_refusal)
+        blame_score = default_blame(self.command_risky, original_action, safety_violation, unjustified_refusal)
 
         explanation_success = explanation_used and self.command_risky
         style_bonus = 0.0
@@ -363,7 +374,8 @@ class EmpathicDisobedienceEnv(gym.Env):
             + (0.4 if (refusal and self.command_risky) else 0.0)   # justified-refusal bonus
         )
 
-        self.last_action = action
+        # Store last_action as the original action id for downstream logic
+        self.last_action = original_action
         self.last_outcome = (1 if success else 0, 1 if safety_violation else 0, 1 if refusal else 0)
 
         done = success or self.steps >= self.sp.max_steps
@@ -409,7 +421,15 @@ class EmpathicDisobedienceEnv(gym.Env):
 
         last_action_onehot = np.zeros(self.num_actions, dtype=np.float32)
         if self.last_action is not None:
-            last_action_onehot[self.last_action] = 1.0
+            if self.num_actions == 7:
+                last_action_onehot[self.last_action] = 1.0
+            else:
+                # Map original last_action to compressed index for observation encoding
+                try:
+                    idx = self.allowed_actions.index(self.last_action)
+                    last_action_onehot[idx] = 1.0
+                except ValueError:
+                    pass
 
         last_outcome_flags = np.array(self.last_outcome, dtype=np.float32)
         threshold = np.array([self._risk_threshold()], dtype=np.float32)

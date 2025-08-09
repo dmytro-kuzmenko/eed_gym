@@ -23,7 +23,7 @@ Key modeled social-cognitive constructs:
 * Noisy *risk\_estimate* vs true risk (POMDP).
 * Curriculum reward scheduling (optional) for exploration.
 * Explanation style appropriateness bonuses.
-* Logging utilities: calibration curves, threshold vs risk scatter, trust/valence trajectories, refusal precision/recall.
+* Logging utilities: calibration curves, threshold vs risk scatter, trust/valence trajectories, refusal precision/recall, ECE, Brier, AUROC/PR-AUC.
 * PPO training script with Weights & Biases integration.
 
 ---
@@ -65,9 +65,15 @@ eval::
 python simple_eval.py --episodes 100 --holdout --weights ./ckpts/ppo_no_trust_penalty_600K_seed0.zip
 
 ```bash
-python train_ppo_eed.py --observe-valence --name ppo_no_curr_600K --seeds 1 --no-curriculum
-python train_ppo_eed.py --observe-valence --name ppo_no_clarify_alt_600K --seeds 1 --no-clarify-alt
-python train_ppo_eed.py --observe-valence --name ppo_no_trust_penalty_600K --seeds 1 --no-trust-penalty
+python train_ppo_eed.py --name ppo_no_affect_600K --seeds 5 # done
+python train_ppo_eed.py --observe-valence --name ppo_no_affect_600K --seeds 5 # done
+python train_ppo_eed.py --observe-valence --name ppo_no_curr_600K --seeds 5 --no-curriculum # done
+python train_ppo_eed.py --observe-valence --name ppo_no_clarify_alt_600K --seeds 5 --no-clarify-alt # done
+python train_ppo_eed.py --observe-valence --name ppo_no_trust_penalty_600K --seeds 5 --no-trust-penalty # done
+python train_ppo_eed.py --observe-valence --name ppo_lstm --seeds 5 --recurrent # done
+python train_ppo_lag.py # done
+
+
 
 python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250803 --observe-valence
 
@@ -92,10 +98,12 @@ python simple_eval.py --episodes 100 --holdout --weights ./ckpts/ppo_no_curr_600
 python simple_eval.py --episodes 100 --holdout --weights ./test_masked_600K_v1_0.zip
 
 python simple_eval.py --episodes 100 --holdout --weights ./ppo_lstm_600K_v0_lstm_seed0.zip
+
+python simple_eval.py --episodes 100 --holdout --recurrent --dir ../ckpts/lstm
 ```
 
 ### PPO lagrangian
-python train_safe_rl.py --algo ppo_lag --observe-valence --name ppo_lag_600K_observable_v0
+python train_ppo_lag.py
 
 
 
@@ -110,6 +118,48 @@ python heuristic_run.py --policy threshold
 
 python simple_eval.py --holdout --episodes 100 --policy refuse_risky
 python simple_eval.py --holdout --episodes 100 --policy always_comply
+### MaskablePPO (safe RL baseline)
+Train and save 5 seeds:
+```bash
+python src/train_maskable.py --observe-valence --seeds 5 --name maskable_ppo_600K
+```
+
+### OOD Robustness Evaluation
+Sweep multiple holdout personas and stressors (noise, safety, threshold shifts):
+```bash
+python src/ood_eval.py --weights ckpts/ppo_core_600K_seed0.zip --episodes 100 --observe-valence
+# For recurrent / lagrangian / maskable variants:
+python src/ood_eval.py --weights ckpts/ppo_lstm_600K_seed0.zip --episodes 100 --recurrent
+python src/ood_eval.py --weights ckpts/ppo_lag_600K_seed0.zip --episodes 100 --lag
+python src/ood_eval.py --weights ckpts/masked/maskable_ppo_600K_seed0.zip --episodes 100 --maskable
+```
+
+Outputs `ood_summary.json` next to the weights file.
+
+### Metrics
+During evaluation we report:
+- Safety: unsafe-compliance rate
+- Refusal performance: precision / recall / F1, justified ratio
+- Calibration: Spearman ρ, ECE (bin-wise), Brier (predicted refusal probability), AUROC/PR-AUC for should-refuse vs risk
+- Affective/trust: mean trust, valence
+
+### Holdout personas
+`empathic_disobedience_env.py` defines `HOLDOUT_PROFILES` with three distinct personas. Use via `--holdout` in `simple_eval.py` or automatically in `ood_eval.py`.
+
+### Vignette study (human grounding)
+Collect human ratings on short scenarios to ground refusal/explanation effects.
+1. Create a Google Form with 10 scenarios; per scenario, randomly show one response: COMPLY / REFUSE_EMPATHIC / REFUSE_CONSTRUCTIVE. Ask Likert ratings: appropriateness, safety, trust, empathy (if applicable), blame_robot, perceived_risk, comprehension.
+2. Export CSV and fit parameters:
+```bash
+python src/vignette_fit.py --csv data/vignettes.csv --out out/params_human.json --print
+```
+This produces summary stats, a simple logistic model P(should_refuse | perceived_risk), and suggested reward weight tweaks.
+
+### Notes
+- `observe_valence`: controls observation only. Risk threshold internally depends on valence regardless of observation.
+- `--no-clarify-alt`: reduces action space; internal mapping keeps semantics consistent.
+- Lagrangian PPO (`PPOLag`) applies a cost penalty with dual updates; use `CostWrapper` to provide `info['cost']`.
+
 
 ---
 

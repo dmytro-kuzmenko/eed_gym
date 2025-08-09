@@ -4,15 +4,16 @@ from empathic_disobedience_env import EmpathicDisobedienceEnv
 from ppo_lag import PPOLag
 
 vec_env = DummyVecEnv([lambda: CostWrapper(
-        EmpathicDisobedienceEnv(observe_valence=False))])
+        EmpathicDisobedienceEnv(observe_valence=True))])
 
-model = PPOLag(
-    "MlpPolicy", vec_env,
-    n_steps=256, batch_size=256,
-    learning_rate=3e-4, ent_coef=0.1,
-    cost_limit=0.25, penalty_lr=0.02,
-    verbose=1, seed=0,
-)
+for i in range(5): # seeds
+    model = PPOLag(
+        "MlpPolicy", vec_env,
+        n_steps=256, batch_size=256,
+        learning_rate=3e-4, ent_coef=0.1,
+        cost_limit=0.25, penalty_lr=0.02,
+        verbose=1, seed=i,
+    )
 
-model.learn(total_timesteps=600_000)
-model.save("ppo_lag_sb3.zip")
+    model.learn(total_timesteps=600_000)
+    model.save(f"ppo_lag_600K_seed{i}.zip")

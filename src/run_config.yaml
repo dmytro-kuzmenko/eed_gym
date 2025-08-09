@@ -1,0 +1,44 @@
+seed: 4
+total_steps: 600000
+eval_int: 20000
+algo: RecurrentPPO
+policy: MlpLstmPolicy
+ppo_hparams:
+  n_steps: 128
+  batch_size: 256
+  learning_rate: 0.0003
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.1
+  vf_coef: 0.5
+reward_weights_init:
+  task: 1.0
+  safety: 6.0
+  blame: 2.0
+  trust_deviation: 0.6
+  refusal: 0.25
+  explanation_bonus: 0.4
+  clarify_cost: 0.15
+  alt_progress_bonus: 0.25
+  empathetic_style_bonus: 0.05
+  constructive_style_bonus: 0.03
+sim_params:
+  max_steps: 60
+  progress_per_safe_comply: 0.05
+  progress_penalty_risky_comply: -0.02
+  progress_alt: 0.02
+  base_risk_prob: 0.3
+  noise_std: 0.25
+  trust_target: 0.75
+  valence_decay: 0.01
+  arousal_decay: 0.02
+  clarify_risk_noise_reduction: 0.5
+  explanation_valence_mitigation: 0.6
+  explanation_trust_boost: 0.05
+  empathy_valence_threshold: -0.3
+  risk_threshold_base: 0.5
+  risk_threshold_trust_coeff: 0.1
+  risk_threshold_valence_coeff: 0.3
+  safety_violation_prob: 0.7
+curriculum: "safety & blame scaled 0.6\u21921.0 over first 30 %"

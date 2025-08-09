@@ -13,6 +13,7 @@ from empathic_disobedience_env import (
     COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, PROPOSE_ALTERNATIVE,
     REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE
 )
+from empathic_disobedience_env import HOLDOUT_PROFILES
 
 # --------------------------------------------------------------------------- #
 REFUSAL_ACTIONS = {
@@ -252,6 +253,10 @@ def main():
     p.add_argument("--seeds",  type=int, default=1)
     p.add_argument("--project",default="eed_gym")
     p.add_argument("--entity")
+    p.add_argument("--holdout-profiles", action="store_true",
+                   help="Log extra evaluation passes on multiple holdout personas")
+    p.add_argument("--stress-ood", action="store_true",
+                   help="Enable stress tests (noise/risk/threshold shifts) during eval")
     args = p.parse_args()
 
     # -------- static hyper-params (shared between MLP & LSTM) ----------

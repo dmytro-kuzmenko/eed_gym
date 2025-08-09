@@ -2,6 +2,7 @@
 import torch as th
 from torch import nn
 from stable_baselines3 import PPO
+from stable_baselines3.common.type_aliases import RolloutBufferSamples
 
 
 class PPOLag(PPO):
@@ -16,55 +17,60 @@ class PPOLag(PPO):
 
     def __init__(self, *args, cost_limit=0.25, penalty_lr=0.02, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cost_limit = cost_limit
-        self.penalty_lr = penalty_lr
+        self.cost_limit = float(cost_limit)
+        self.penalty_lr = float(penalty_lr)
         # store λ in unconstrained log-space; softplus keeps it ≥ 0
         self._log_lam = nn.Parameter(th.tensor(0.0), requires_grad=False)
 
     # ------------------------------------------------------------------ #
+    def _compute_cost_advantages(self) -> th.Tensor:
+        infos = getattr(self.rollout_buffer, "infos", None)
+        if infos is None or len(infos) == 0:
+            return th.zeros(self.rollout_buffer.buffer_size, device=self.device)
+        costs = th.tensor([float(info.get("cost", 0.0)) for info in infos], device=self.device)
+        adv = costs - costs.mean()
+        std = adv.std()
+        if std > 1e-8:
+            adv = (adv - adv.mean()) / (std + 1e-8)
+        else:
+            adv = th.zeros_like(adv)
+        return adv
+
+    # ------------------------------------------------------------------ #
     def _update_policy_using_rollout_buffer(self) -> None:
-        """
-        Called by SB3's .learn() once the rollout buffer is full.
-        We override **only this method** to add λ·J_cost to the loss and
-        to perform the dual-ascent update on λ afterwards.
-        """
-
-        # 1. pull per-step costs from the infos collected during rollout
-        costs = th.tensor(
-            [info.get("cost", 0.0) for info in self.rollout_buffer.infos],
-            device=self.device
-        )
-        cost_adv = costs - costs.mean()
-        cost_adv = (cost_adv - cost_adv.mean()) / (cost_adv.std() + 1e-8)
-
+        """Override PPO update to add λ·J_cost and update λ via dual ascent."""
         lam = th.nn.functional.softplus(self._log_lam)
+        cost_adv = self._compute_cost_advantages()
 
-        # 2. run the usual PPO minibatch loop, but add λ·cost term
         for epoch in range(self.n_epochs):
-            for batch in self.rollout_buffer.get(self.batch_size):
-                ratio = th.exp(
-                    self.policy.get_distribution(batch.observations)
-                    .log_prob(batch.actions) - batch.old_log_prob
-                )
+            for rollout_data in self.rollout_buffer.get(self.batch_size):
+                assert isinstance(rollout_data, RolloutBufferSamples)
+                if self.policy.use_sde:
+                    self.policy.reset_noise(self.batch_size)
+                distribution = self.policy.get_distribution(rollout_data.observations)
+                log_prob = distribution.log_prob(rollout_data.actions)
+                ratio = th.exp(log_prob - rollout_data.old_log_prob)
 
-                pg_loss = -th.min(
-                    ratio * batch.advantages,
-                    th.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range)
-                    * batch.advantages,
-                ).mean()
+                pg_losses1 = -rollout_data.advantages * ratio
+                pg_losses2 = -rollout_data.advantages * th.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range)
+                pg_loss = th.max(pg_losses1, pg_losses2).mean()
 
-                cost_loss = (ratio * cost_adv[batch.indices]).mean()
-                loss = pg_loss + lam * cost_loss
+                lag_cost = (ratio * cost_adv[rollout_data.indices]).mean()
+                loss = pg_loss + lam * lag_cost
 
                 self.policy.optimizer.zero_grad()
                 loss.backward()
                 self.policy.optimizer.step()
 
-        # 3.  dual-ascent on λ (projected gradient step)
-        ep_cost = costs.mean().item()
-        lam_new = (lam + self.penalty_lr * (ep_cost - self.cost_limit)).clamp(min=0.0)
-        # inverse softplus: log(exp(lam)−1)
-        self._log_lam.data = th.log(th.expm1(lam_new) + 1e-8)
+        # Dual ascent on λ using mean cost across buffer
+        infos = getattr(self.rollout_buffer, "infos", [])
+        if len(infos) > 0:
+            costs = th.tensor([float(info.get("cost", 0.0)) for info in infos], device=self.device)
+            ep_cost = costs.mean().item()
+            lam_val = th.nn.functional.softplus(self._log_lam).item()
+            lam_new = max(0.0, lam_val + self.penalty_lr * (ep_cost - self.cost_limit))
+            # inverse softplus: log(exp(lam)−1)
+            self._log_lam.data = th.log(th.expm1(th.tensor(lam_new)) + 1e-8)
 
     # ------------------------------------------------------------------ #
     #  we keep everything else (collect_rollouts, value updates, etc.)
