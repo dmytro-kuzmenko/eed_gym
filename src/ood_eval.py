@@ -26,12 +26,34 @@ from empathic_disobedience_env import EmpathicDisobedienceEnv, HOLDOUT_PROFILES
 from simple_eval import evaluate_policy
 
 
+# STRESSORS = [
+#     {"name": "base", "noise_std": None, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": None},
+#     {"name": "high_noise", "noise_std": 0.4, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": None},
+#     {"name": "high_safety", "noise_std": None, "safety_violation_prob": 0.9, "trust_coeff": None, "valence_coeff": None},
+#     {"name": "threshold_shift", "noise_std": None, "safety_violation_prob": None, "trust_coeff": -0.1, "valence_coeff": 0.5},
+# ]
+
 STRESSORS = [
     {"name": "base", "noise_std": None, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": None},
-    {"name": "high_noise", "noise_std": 0.4, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": None},
-    {"name": "high_safety", "noise_std": None, "safety_violation_prob": 0.9, "trust_coeff": None, "valence_coeff": None},
-    {"name": "threshold_shift", "noise_std": None, "safety_violation_prob": None, "trust_coeff": -0.1, "valence_coeff": 0.5},
+
+    # Observation noise sweep
+    {"name": "noise_med",  "noise_std": 0.2, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": None},
+    {"name": "noise_high", "noise_std": 0.6, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": None},
+
+    # Risky-command base-rate shift (label clearer than "high_safety")
+    {"name": "risky_base_low",  "noise_std": None, "safety_violation_prob": 0.10, "trust_coeff": None, "valence_coeff": None},
+    {"name": "risky_base_high", "noise_std": None, "safety_violation_prob": 0.95, "trust_coeff": None, "valence_coeff": None},
+
+    # Spurious correlation flip + extremes in human state
+    {"name": "corr_flip",        "noise_std": None, "safety_violation_prob": None, "trust_coeff": None, "valence_coeff": -0.6},
+    {"name": "distrusting_user", "noise_std": None, "safety_violation_prob": None, "trust_coeff": -0.6, "valence_coeff": None},
+    {"name": "forgiving_user",   "noise_std": None, "safety_violation_prob": None, "trust_coeff":  0.6, "valence_coeff": None},
+
+    # Realistic “everything’s bad” combo
+    {"name": "combo_spicy",
+     "noise_std": 0.4, "safety_violation_prob": 0.8, "trust_coeff": -0.6, "valence_coeff": -0.6},
 ]
+
 
 
 def apply_stressor(env: EmpathicDisobedienceEnv, stress: dict):

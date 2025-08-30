@@ -380,14 +380,13 @@ def evaluate_policy_name(policy_name: str, episodes: int,
     print(f"{m['model']:>30s}  reward={m['mean_reward']:.2f}  F1={m['f1']:.2f}")
     return m
 
-
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 
 def parse_args():
     pa = argparse.ArgumentParser()
-    pa.add_argument("--episodes", type=int, default=50)
+    pa.add_argument("--episodes", type=int, default=100)
     pa.add_argument("--observe-valence", action="store_true")
     pa.add_argument("--holdout", action="store_true",
                     help="Evaluate only on the hold-out human profile")
@@ -396,7 +395,7 @@ def parse_args():
     pa.add_argument("--weights", type=str, help="Path to SB3 model (.zip)")
     pa.add_argument("--dir", type=str, help="Folder of .zip checkpoints")
     pa.add_argument("--policy",
-                    choices=["always_comply", "refuse_risky", "threshold"],
+                    choices=["always_comply", "refuse_risky", "threshold", "vignette_gate"],
                     help="Run a built-in heuristic instead of a model.")
     return pa.parse_args()
 

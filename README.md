@@ -50,7 +50,7 @@ numpy
 
 ---
 
-## 5. Quick Start
+## Quick Start
 
 ### PPO 
 
@@ -60,6 +60,8 @@ Flags
 --no-curriculum
 --no-clarify-alt
 --no-trust-penalty
+--holdout-profiles
+--stress-ood
 
 eval::
 python simple_eval.py --episodes 100 --holdout --weights ./ckpts/ppo_no_trust_penalty_600K_seed0.zip
@@ -70,64 +72,80 @@ python train_ppo_eed.py --observe-valence --name ppo_no_affect_600K --seeds 5 # 
 python train_ppo_eed.py --observe-valence --name ppo_no_curr_600K --seeds 5 --no-curriculum # done
 python train_ppo_eed.py --observe-valence --name ppo_no_clarify_alt_600K --seeds 5 --no-clarify-alt # done
 python train_ppo_eed.py --observe-valence --name ppo_no_trust_penalty_600K --seeds 5 --no-trust-penalty # done
-python train_ppo_eed.py --observe-valence --name ppo_lstm --seeds 5 --recurrent # done
+python train_ppo_eed.py --observe-valence --name ppo_lstm_600K --seeds 5 --recurrent # done
 python train_ppo_lag.py # done
+```
 
 
-
+```bash
 python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250803 --observe-valence
-
 python train_ppo_eed.py --total-steps 600000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name ppo_core_600K_20250803
-
 python train_ppo_eed.py --total-steps 20000 --eval-interval 20000 --eval-episodes 20 --seeds 1 --name tmp_test_ablated
 ```
 
 ### PPO LSTM
-#### Train recurrent agent
+Train recurrent agent
 ```bash
-python train_ppo_eed.py --recurrent --observe-valence --name ppo_lstm_600K_v0
+python train_ppo_eed.py --recurrent --observe-valence --name ppo_lstm_600K
 ```
 
 ### PPO eval
 
 DIR eval
+```bash
 python simple_eval.py --dir ckpts/ppo_core_600K_trust_tweaked --episodes 100
+```
 
 ```bash
 python simple_eval.py --episodes 100 --holdout --weights ./ckpts/ppo_no_curr_600K_seed0.zip
 python simple_eval.py --episodes 100 --holdout --weights ./test_masked_600K_v1_0.zip
-
 python simple_eval.py --episodes 100 --holdout --weights ./ppo_lstm_600K_v0_lstm_seed0.zip
 
 python simple_eval.py --episodes 100 --holdout --recurrent --dir ../ckpts/lstm
+
+python src/simple_eval.py --weights ckpts/ablated_trust_penalty/ppo_no_trust_penalty_600K_seed2.zip --episodes 100 --observe-valence
 ```
 
 ### PPO lagrangian
-python train_ppo_lag.py
+Train:
+`python train_ppo_lag.py`
 
-
-
-#### Evaluate
-python simple_eval.py --weights ppo_lstm_seed0.zip --episodes 100
-
+Evaluate:
+`python simple_eval.py --weights ppo_lstm_seed0.zip --episodes 100`
 
 ### Baseline heuristics eval
+```bash
 python heuristic_run.py --policy always_comply
 python heuristic_run.py --policy refuse_risky
 python heuristic_run.py --policy threshold
 
 python simple_eval.py --holdout --episodes 100 --policy refuse_risky
 python simple_eval.py --holdout --episodes 100 --policy always_comply
-### MaskablePPO (safe RL baseline)
-Train and save 5 seeds:
+
+python src/simple_eval.py --policy vignette_gate --episodes 100 --observe-valence
+python src/simple_eval.py --policy threshold --episodes 100 --observe-valence
+
+```
+
+### MaskablePPO (safe RL)
+Train:
 ```bash
 python src/train_maskable.py --observe-valence --seeds 5 --name maskable_ppo_600K
 ```
 
-### OOD Robustness Evaluation
+### CPO omnisafe
+pip install omnisafe safety-gymnasium
+
+Train:
+```bash
+python src/train_cpo.py --observe-valence --seeds 5 --name cpo_omnisafe_600K
+```
+
+### OOD Robustness Evaluation (only takes a single ckpt)
 Sweep multiple holdout personas and stressors (noise, safety, threshold shifts):
 ```bash
-python src/ood_eval.py --weights ckpts/ppo_core_600K_seed0.zip --episodes 100 --observe-valence
+python src/ood_eval.py --weights ckpts/ablated_affect/ppo_no_affect_600K_seed0.zip --episodes 100 --observe-valence
+python src/ood_eval.py --weights ckpts/ablated_trust_penalty/ppo_no_trust_penalty_600K_seed2.zip --episodes 100 --observe-valence
 # For recurrent / lagrangian / maskable variants:
 python src/ood_eval.py --weights ckpts/ppo_lstm_600K_seed0.zip --episodes 100 --recurrent
 python src/ood_eval.py --weights ckpts/ppo_lag_600K_seed0.zip --episodes 100 --lag
@@ -146,12 +164,14 @@ During evaluation we report:
 ### Holdout personas
 `empathic_disobedience_env.py` defines `HOLDOUT_PROFILES` with three distinct personas. Use via `--holdout` in `simple_eval.py` or automatically in `ood_eval.py`.
 
-### Vignette study (human grounding)
+### Vignette study
 Collect human ratings on short scenarios to ground refusal/explanation effects.
+
 1. Create a Google Form with 10 scenarios; per scenario, randomly show one response: COMPLY / REFUSE_EMPATHIC / REFUSE_CONSTRUCTIVE. Ask Likert ratings: appropriateness, safety, trust, empathy (if applicable), blame_robot, perceived_risk, comprehension.
+
 2. Export CSV and fit parameters:
 ```bash
-python src/vignette_fit.py --csv data/vignettes.csv --out out/params_human.json --print
+python src/vignette_fit.py --csv src/data/vignette_clean_130_inferred.csv --out src/out/params_human.json --print
 ```
 This produces summary stats, a simple logistic model P(should_refuse | perceived_risk), and suggested reward weight tweaks.
 
@@ -159,24 +179,23 @@ This produces summary stats, a simple logistic model P(should_refuse | perceived
 - `observe_valence`: controls observation only. Risk threshold internally depends on valence regardless of observation.
 - `--no-clarify-alt`: reduces action space; internal mapping keeps semantics consistent.
 - Lagrangian PPO (`PPOLag`) applies a cost penalty with dual updates; use `CostWrapper` to provide `info['cost']`.
+- MaskablePPO env requires an ActionMasker from sb3-contrib to be trainable
 
-
----
-
+---------------------------------------------
 
 ## Environment Dynamics (Simplified)
 
 Each step:
 
 1. Sample human command (risky/safe) given profile + inconsistency.
-2. Agent observes noisy risk\_estimate + current affect/trust snapshot.
-3. Agent action (comply / some refusal variant / clarify / alternative).
+2. Agent observes noisy `risk\_estimate` + current affect/trust snapshot.
+3. Agent action (`comply` / some `refusal` variant / `clarify` / `alternative`).
 4. Outcome updates: task progress, safety violation chance (if risky compliance), affect, trust.
 5. Blame score assigned (penalty component).
 6. Reward composed: task progress − safety & blame penalties − trust deviation − refusal cost + explanation/style bonuses.
 7. New command sampled (unless episode ends).
 
-Episodes end on task completion, step limit, or catastrophic (optional extension).
+Episodes end on task completion, step limit, or catastrophic (TBD, optional extension).
 
 ---
 
@@ -202,10 +221,11 @@ Episodes end on task completion, step limit, or catastrophic (optional extension
 ```
 
 You can disable explicit style actions to reduce complexity.
+`--no-clarify-alt` flag disables actions `ASK_CLARIFY` and `PROPOSE_ALTERNATIVE`.
 
 ---
 
-## 8. Core Metrics
+## 8. Core Metrics (TO update)
 
 | Metric                            | Purpose                       |
 | --------------------------------- | ----------------------------- |
@@ -242,14 +262,14 @@ Logged to Weights & Biases:
 * Calibration bins & counts
 * Seeds & policy type
 
-Use at least **3 seeds** (5 preferred) and report mean ± std for main metrics.
+**5 seeds** are used to report mean ± std for main metrics.
 
 ---
 
 Extending the Benchmark (Ideas)
 
-* Survey-based blame regression.
-* Personality inference (online estimation of human profile).
+* Survey-based blame regression. -- TODO
+* Personality inference (online estimation of human profile). -- TBD
 * Cultural norm parameters (modify threshold function).
 * Active risk information gathering (clarify planning).
 * Integration with LLM for natural language justification generation (post-hoc).

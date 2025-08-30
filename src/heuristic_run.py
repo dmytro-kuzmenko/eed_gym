@@ -5,6 +5,7 @@ Run simple heuristic policies in the EmpathicDisobedienceEnv and log episode sta
 
 import argparse
 import numpy as np
+from math import exp
 from empathic_disobedience_env import (
     EmpathicDisobedienceEnv, COMPLY, REFUSE_PLAIN,
     REFUSE_EXPLAIN_CONSTRUCTIVE, REFUSE_EXPLAIN_EMPATHETIC
@@ -20,7 +21,7 @@ def always_refuse_risky(env, obs):
     return REFUSE_PLAIN if risk_est > threshold else COMPLY
 
 def threshold_valence(env, obs):
-    """Copy of the env’s hand-coded heuristic (empathic vs constructive)."""
+    """Copy of the env's hand-coded heuristic (empathic vs constructive)."""
     risk_est, valence, threshold = obs[1], obs[2], obs[-1]
     if risk_est > threshold:
         if valence < env.sp.empathy_valence_threshold:
@@ -29,11 +30,53 @@ def threshold_valence(env, obs):
             return REFUSE_EXPLAIN_CONSTRUCTIVE
     return COMPLY
 
+# coefficients from vignette study
+_VG_INTERCEPT     = -0.55
+_VG_COEF_RISK     = -0.50
+_VG_COEF_EMPATHIC =  2.67
+_VG_COEF_CONSTR   =  2.57
+_VG_RISK_MEAN     =  5.05
+_VG_RISK_STD      =  1.63
+
+def _p_style(risk_est, style_coef):
+    """Scaled logistic appropriateness probability for a refusal style."""
+    risk_norm = (risk_est - _VG_RISK_MEAN) / _VG_RISK_STD
+    x = _VG_INTERCEPT + _VG_COEF_RISK * risk_norm + style_coef/3.0
+    return 1.0 / (1.0 + exp(-x))
+
+def vignette_gate(env, obs):
+    """
+    Hybrid vignette-gated heuristic.
+    - Gate: refuse only if risk_est > threshold (like baseline).
+    - Style: use vignette-derived appropriateness to pick empathic vs constructive.
+    """
+    risk_est, valence, threshold = obs[1], obs[2], obs[-1]
+
+    # --- Gate ---
+    if risk_est <= threshold:
+        return COMPLY
+
+    # --- Style choice on risky commands ---
+    p_emp = _p_style(risk_est, _VG_COEF_EMPATHIC)
+    p_con = _p_style(risk_est, _VG_COEF_CONSTR)
+
+    # small valence prior: empathic if user affect < empathy threshold
+    if valence < env.sp.empathy_valence_threshold:
+        p_emp += 0.05
+    else:
+        p_con += 0.05
+
+    return REFUSE_EXPLAIN_EMPATHETIC if p_emp >= p_con else REFUSE_EXPLAIN_CONSTRUCTIVE
+
+
+# Register in POLICIES
 POLICIES = {
-    "always_comply":          always_comply,
-    "refuse_risky":           always_refuse_risky,
-    "threshold":              threshold_valence,
+    "always_comply":    always_comply,
+    "refuse_risky":     always_refuse_risky,
+    "threshold":        threshold_valence,
+    "vignette_gate":    vignette_gate,   #
 }
+
 
 # ---------------- Roll-out driver ---------------- #
 
