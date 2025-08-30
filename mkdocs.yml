@@ -1,0 +1,26 @@
+site_name: EED-Gym
+theme:
+  name: material
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: ["."]
+          options:
+            docstring_style: google
+            show_source: false
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - Install: tutorials/01_install.md
+      - Quickstart: tutorials/02_quickstart.md
+      - Train Baselines: tutorials/03_train_baselines.md
+      - Eval (ID & OOD): tutorials/04_eval_id_ood.md
+      - Ablations: tutorials/05_ablations.md
+      - Add a Persona: tutorials/06_add_persona.md
+      - Add a Scenario: tutorials/07_add_scenario.md
+  - API Reference: api.md

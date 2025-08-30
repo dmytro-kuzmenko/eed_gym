@@ -1,0 +1,56 @@
+# Schema:
+# sets.<name>: list of "stressor" entries applied during eval.
+# Each entry has:
+#   name: identifier
+#   prob: sampling probability (sum doesn't need to be 1.0; normalized)
+#   apply: key-value overrides to SimParams fields (and optional env flags)
+#          keys are dot-paths under {sim, env}.*
+#
+# Evaluator suggestions:
+# - For each episode, sample one entry from the chosen set by 'prob' (uniform if omitted).
+# - Apply 'apply' by overwriting the base SimParams / env flags before reset().
+
+version: 1
+sets:
+  id_default:
+    - name: none
+      prob: 1.0
+      apply: {}
+
+  ood_set:
+    - name: high_noise
+      prob: 0.34
+      apply:
+        sim.noise_std: 0.25
+
+    - name: high_base_risk
+      prob: 0.33
+      apply:
+        sim.base_risk_prob: 0.35
+
+    - name: tighter_thresholds
+      prob: 0.33
+      apply:
+        sim.risk_threshold_base: 0.55           
+        sim.risk_threshold_trust_coeff: -0.15
+        sim.risk_threshold_valence_coeff: 0.10
+
+  ood_strict:
+    - name: high_noise
+      prob: 0.25
+      apply:
+        sim.noise_std: 0.30
+    - name: high_base_risk
+      prob: 0.25
+      apply:
+        sim.base_risk_prob: 0.40
+    - name: tighter_thresholds
+      prob: 0.25
+      apply:
+        sim.risk_threshold_base: 0.60
+        sim.risk_threshold_trust_coeff: -0.20
+        sim.risk_threshold_valence_coeff: 0.12
+    - name: harsher_consequences
+      prob: 0.25
+      apply:
+        sim.safety_violation_prob: 0.30

@@ -1,0 +1,3 @@
+# Remove the penalty for deviating from trust target.
+reward_weights:
+  trust_deviation: 0.0

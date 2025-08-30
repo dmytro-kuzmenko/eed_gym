@@ -1,0 +1,13 @@
+# Remove affect dynamics/benefits; no valence observation; explanations don't soothe.
+env:
+  observe_valence: false
+
+reward_weights:
+  empathetic_style_bonus: 0.0
+  constructive_style_bonus: 0.0
+  explanation_bonus: 0.0
+
+sim_params:
+  valence_decay: 1.0
+  arousal_decay: 1.0
+  explanation_valence_mitigation: 0.0
