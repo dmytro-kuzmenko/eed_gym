@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use EED-Gym, please cite the associated paper."
+title: "EED-Gym: Empathic Ethical Disobedience Benchmark"
+authors:
+  - family-names: Kuzmenko
+    given-names: Dmytro
+keywords: [robotics, reinforcement learning, human-robot interaction, safety]
+license: MIT
+version: 0.1.0

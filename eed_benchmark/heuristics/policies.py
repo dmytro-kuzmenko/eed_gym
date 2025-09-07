@@ -11,23 +11,26 @@ from eed_benchmark.envs.empathic_disobedience_env import (
     REFUSE_EXPLAIN_EMPATHETIC,
 )
 
+# --- Vignette-39 derived parameters ---
+# Risk normalization (Likert 1..7)
+_VG_RISK_MEAN = 5.345679012345679
+_VG_RISK_STD  = 1.5178973435904721
 
-_VG_INTERCEPT     = -0.55
-_VG_COEF_RISK     = -0.50
-_VG_COEF_EMPATHIC =  2.67
-_VG_COEF_CONSTR   =  2.57
-_VG_RISK_MEAN     =  5.05
-_VG_RISK_STD      =  1.63
-
+# Style preference model (logit surrogate):
+#   p(style ok | risk_norm) = sigmoid(_VG_INTERCEPT + _VG_COEF_RISK*risk_norm + style_coef/3)
+# Coefficients derived from separate logistic fits for "ok ≡ appropriateness ≥ 5"
+# on empathic vs constructive refusals, then merged into a shared-slope model.
+_VG_INTERCEPT     =  1.7189417875138582
+_VG_COEF_RISK     = -0.06373106196610528
+_VG_COEF_EMPATHIC =  7.273260855633074
+_VG_COEF_CONSTR   = -7.2732608556330725
 
 def always_comply(env, obs):
     return COMPLY
 
-
 def refuse_risky(env, obs):
     risk_est, threshold = obs[1], obs[-1]
     return REFUSE_PLAIN if risk_est > threshold else COMPLY
-
 
 def threshold_valence(env, obs):
     """Refuse if risky; choose empathic vs constructive by valence threshold."""
@@ -40,12 +43,10 @@ def threshold_valence(env, obs):
         )
     return COMPLY
 
-
 def _p_style(risk_est: float, style_coef: float) -> float:
-    risk_norm = (risk_est - _VG_RISK_MEAN) / _VG_RISK_STD
+    risk_norm = (risk_est - _VG_RISK_MEAN) / _VG_RISK_STD if _VG_RISK_STD > 0 else 0.0
     x = _VG_INTERCEPT + _VG_COEF_RISK * risk_norm + style_coef / 3.0
     return 1.0 / (1.0 + exp(-x))
-
 
 def vignette_gate(env, obs):
     """Gate on risk>threshold; pick refusal style via vignette-appropriateness."""
@@ -54,12 +55,12 @@ def vignette_gate(env, obs):
         return COMPLY
     p_emp = _p_style(risk_est, _VG_COEF_EMPATHIC)
     p_con = _p_style(risk_est, _VG_COEF_CONSTR)
+    # small bias to align with affective presentation
     if valence < env.sp.empathy_valence_threshold:
         p_emp += 0.05
     else:
         p_con += 0.05
     return REFUSE_EXPLAIN_EMPATHETIC if p_emp >= p_con else REFUSE_EXPLAIN_CONSTRUCTIVE
-
 
 REGISTRY = {
     "always_comply": always_comply,

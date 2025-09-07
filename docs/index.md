@@ -7,7 +7,7 @@
 > **What is this?**  
 > EED-Gym simulates a human issuing (safe/risky) commands with latent affect/trust dynamics and lets RL agents choose between compliance, clarifying, or refusing with different explanation styles.
 
-![Add overview figure here](assets/fig_overview.png)
+![Overview figure](assets/fig_overview.png)
 
 ## What you can do
 - Train PPO / LSTM / MaskablePPO / Lagrangian PPO baselines

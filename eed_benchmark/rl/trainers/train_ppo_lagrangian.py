@@ -27,7 +27,7 @@ from eed_benchmark.envs.empathic_disobedience_env import (
     REFUSE_EXPLAIN_EMPATHETIC,
     REFUSE_EXPLAIN_CONSTRUCTIVE,
 )
-from eed_benchmark.rl.trainers.ppo_lag import PPOLag  # ensure this class lives here
+from eed_benchmark.rl.trainers.ppo_lag import PPOLag
 
 
 # --------------------------- helpers ---------------------------
