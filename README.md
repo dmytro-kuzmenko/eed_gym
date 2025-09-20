@@ -23,14 +23,38 @@ pip install -e .
 ## Quickstart
 ```bash
 # Train a baseline
-python eed_benchmark/rl/trainers/train_ppo.py --config configs/train/ppo.yaml
+python -m eed_benchmark.rl.trainers.train_ppo --config configs/train/ppo.yaml
+python -m eed_benchmark.rl.trainers.train_ppo --config configs/train/ppo_lstm.yaml
 
-# Evaluate (ID)
+# Train PPO Masked
+python -m eed_benchmark.rl.trainers.train_ppo_masked --observe-valence --out-dir lastrun/ppo_masked --seeds 5
+
+# Train PPO Lag
+python -m eed_benchmark.rl.trainers.train_ppo_lagrangian --config configs/train/ppo_lagrangian.yaml
+
+### EVAL
+
+python -m scripts.st_eval --observe-valence --dir lastrun/lstm
+python -m eed_benchmark.eval.eval_simple --observe-valence --dir lastrun/lstm
+
 python eed_benchmark/rl/evaluate_id.py --config configs/eval/id.yaml --weights runs/ppo/latest.zip
 
-# Evaluate (OOD / stress-test)
-python eed_benchmark/rl/evaluate_ood.py --config configs/eval/ood.yaml --weights runs/ppo/latest.zip
+python -m scripts.ood_eval --observe-valence --dir lastrun/ppo_masked
+
+### Vignette params
+python scripts/derive_vignette_params.py --csv eed_benchmark/data/vignette_53.csv --out params_n.json
+
+python scripts/vignette_effects.py --csv eed_benchmark/data/vignette_53_clean.csv --dv empathy --between resp_type --id pid --export results_empathy.csv
+
 ```
+
+## Ablations training
+python -m eed_benchmark.rl.trainers.train_ablated
+
+## Eval
+--observe-valence 
+python -m eed_benchmark.eval.eval_simple --dir lastrun/ppo/no_affect
+python -m scripts.st_eval --dir lastrun/ppo/no_affect
 
 ## Documentation
 Markdown docs live under `docs/` and can be served with MkDocs:

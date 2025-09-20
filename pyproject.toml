@@ -12,6 +12,7 @@ dependencies = [
     "sb3-contrib>=2.7.0",
     "scipy>=1.16.0",
     "stable-baselines3>=2.6.0",
+    "statsmodels>=0.14.5",
     "torch>=2.7.1",
     "wandb>=0.21.0",
 ]

@@ -1,0 +1,28 @@
+{
+  "counts_per_type": {
+    "ref_con": 64,
+    "ref_emp": 51,
+    "comply": 44
+  },
+  "blame_model": {
+    "bias": 0.4873811128585339,
+    "comply": 0.0,
+    "ref_emp": -0.148353934484402,
+    "ref_con": -0.16751694597784433,
+    "risk": -0.13765944696515714,
+    "risk_comply": -0.11194738296070245
+  },
+  "trust": {
+    "TRUST_REF": 0.7075471698113207,
+    "TRUST_BAND_LOW": 0.6075471698113207,
+    "TRUST_BAND_HIGH": 0.8075471698113207
+  },
+  "vignette_gate": {
+    "_VG_RISK_MEAN": 5.069182389937107,
+    "_VG_RISK_STD": 1.6539920899484293,
+    "_VG_INTERCEPT": 3.2050355374872863,
+    "_VG_COEF_RISK": 0.22611886486859578,
+    "_VG_COEF_EMPATHIC": 0.19001078100928082,
+    "_VG_COEF_CONSTR": -0.19001078100928126
+  }
+}

@@ -70,7 +70,7 @@ def make_logger(enabled: bool, project: str | None, entity: str | None, name: st
     return _W(run), run
 
 class EvalCallback(BaseCallback):
-    def __init__(self, eval_env_fn, eval_interval, eval_episodes, reward_weights, sim_params, curriculum=True, logger=None, recurrent=False):
+    def __init__(self, eval_env_fn, eval_interval, eval_episodes, reward_weights, sim_params, curriculum=True, recurrent=False):
         super().__init__(verbose=0)
         self.eval_env_fn = eval_env_fn
         self.eval_interval = int(eval_interval)
@@ -78,7 +78,7 @@ class EvalCallback(BaseCallback):
         self.last_eval = 0
         self.curriculum = curriculum
         self.rw = reward_weights; self.sim = sim_params
-        self.logger = logger or NoopLogger()
+        # self.logger = logger or NoopLogger()
         self.recurrent = recurrent
     def _on_step(self) -> bool:
         total_steps = self.num_timesteps
@@ -86,7 +86,7 @@ class EvalCallback(BaseCallback):
             schedule_reward_weights(self.rw, total_steps / self.model._total_timesteps)
         if total_steps - self.last_eval >= self.eval_interval:
             self.last_eval = total_steps
-            self.logger.log(self._eval_once(), step=total_steps)
+            # self.logger.log(self._eval_once(), step=total_steps)
         return True
     def _eval_once(self) -> dict:
         env = self.eval_env_fn()
@@ -224,26 +224,28 @@ def main():
     sp = apply_overrides(SimParams(**base_sp.__dict__), cfg.get("sim_params"))
 
     wcfg = cfg.get("wandb", {}) or {}
-    use_wandb = bool(wcfg.get("enabled", False))
+    use_wandb = False # bool(wcfg.get("enabled", False))
     project = wcfg.get("project", "eed_gym"); entity = wcfg.get("entity")
 
-    ALG = ( __import__("sb3_contrib").sb3_contrib.RecurrentPPO if recurrent
-            else __import__("stable_baselines3").stable_baselines3.PPO )
+    if recurrent:
+        from sb3_contrib import RecurrentPPO as ALG
+    else:
+        from stable_baselines3 import PPO as ALG
 
     for seed in seeds:
         run_name = f"{cfg.get('name','eed_ppo')}{'_lstm' if recurrent else ''}_seed{seed}"
-        logger, _ = make_logger(
-            enabled=use_wandb, project=project, entity=entity, name=run_name,
-            config={
-                "algo": "RecurrentPPO" if recurrent else "PPO",
-                "policy": policy,
-                "n_steps": n_steps, "batch_size": batch_size, "learning_rate": learning_rate,
-                "gamma": gamma, "gae_lambda": gae_lambda, "clip_range": clip_range,
-                "ent_coef": ent_coef, "vf_coef": vf_coef,
-                "seed": seed, "total_steps": total_steps, "eval_interval": eval_interval,
-                "env": env_cfg,
-            },
-        )
+        # logger, _ = make_logger(
+        #     enabled=use_wandb, project=project, entity=entity, name=run_name,
+        #     config={
+        #         "algo": "RecurrentPPO" if recurrent else "PPO",
+        #         "policy": policy,
+        #         "n_steps": n_steps, "batch_size": batch_size, "learning_rate": learning_rate,
+        #         "gamma": gamma, "gae_lambda": gae_lambda, "clip_range": clip_range,
+        #         "ent_coef": ent_coef, "vf_coef": vf_coef,
+        #         "seed": seed, "total_steps": total_steps, "eval_interval": eval_interval,
+        #         "env": env_cfg,
+        #     },
+        # )
 
         (out_dir / run_name).mkdir(parents=True, exist_ok=True)
 
@@ -265,12 +267,12 @@ def main():
             ),
             eval_interval=eval_interval, eval_episodes=eval_episodes,
             reward_weights=rw, sim_params=sp,
-            curriculum=curriculum, logger=logger, recurrent=recurrent,
+            curriculum=curriculum, recurrent=recurrent,
         )
 
         model.learn(total_timesteps=total_steps, callback=cb)
         model.save(str(out_dir / f"{run_name}.zip"))
-        logger.finish()
+        # logger.finish()
 
 if __name__ == "__main__":
     main()

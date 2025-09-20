@@ -5,14 +5,14 @@ policy: MlpPolicy
 total_steps: 600000
 eval_interval: 20000
 eval_episodes: 20
-seeds: [0, 1, 2]
+seeds: [0, 1, 2, 3, 4]
 
 wandb:
   enabled: false
   project: eed_gym
   entity: null
 
-out_dir: results/runs
+out_dir: lastrun/ppo_masked
 
 env:
   observe_valence: true

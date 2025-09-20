@@ -11,19 +11,18 @@ from eed_benchmark.envs.empathic_disobedience_env import (
     REFUSE_EXPLAIN_EMPATHETIC,
 )
 
-# --- Vignette-39 derived parameters ---
-# Risk normalization (Likert 1..7)
-_VG_RISK_MEAN = 5.345679012345679
-_VG_RISK_STD  = 1.5178973435904721
-
+# --- Vignette-52 derived parameters ---
 # Style preference model (logit surrogate):
 #   p(style ok | risk_norm) = sigmoid(_VG_INTERCEPT + _VG_COEF_RISK*risk_norm + style_coef/3)
 # Coefficients derived from separate logistic fits for "ok ≡ appropriateness ≥ 5"
 # on empathic vs constructive refusals, then merged into a shared-slope model.
-_VG_INTERCEPT     =  1.7189417875138582
-_VG_COEF_RISK     = -0.06373106196610528
-_VG_COEF_EMPATHIC =  7.273260855633074
-_VG_COEF_CONSTR   = -7.2732608556330725
+
+_VG_RISK_MEAN = 5.077
+_VG_RISK_STD  = 1.644
+_VG_INTERCEPT     = 3.178
+_VG_COEF_RISK     = 0.227 
+_VG_COEF_EMPATHIC =  0.195
+_VG_COEF_CONSTR   = -0.195
 
 def always_comply(env, obs):
     return COMPLY
@@ -43,24 +42,45 @@ def threshold_valence(env, obs):
         )
     return COMPLY
 
-def _p_style(risk_est: float, style_coef: float) -> float:
-    risk_norm = (risk_est - _VG_RISK_MEAN) / _VG_RISK_STD if _VG_RISK_STD > 0 else 0.0
-    x = _VG_INTERCEPT + _VG_COEF_RISK * risk_norm + style_coef / 3.0
+# Small logit bias to reflect affective presentation (≈ ~5% absolute around p=0.5)
+_LOGIT_BIAS = 0.20
+
+def _risk_norm_from_obs(risk_est_01: float) -> float:
+    """Env risk (0..1) -> Likert (1..7) -> z-score using vignette mean/std."""
+    r7 = 1.0 + 6.0 * max(0.0, min(1.0, risk_est_01))
+    if _VG_RISK_STD <= 0:
+        return 0.0
+    # Optional clamp to avoid extreme logits when extrapolating
+    z = (r7 - _VG_RISK_MEAN) / _VG_RISK_STD
+    return max(-4.0, min(4.0, z))
+
+def _sigmoid(x: float) -> float:
     return 1.0 / (1.0 + exp(-x))
 
+def _p_style(risk_est_01: float, style_offset: float, logit_bias: float = 0.0) -> float:
+    """Probability that the style is 'acceptable' per vignette gate surrogate."""
+    z = _VG_INTERCEPT + _VG_COEF_RISK * _risk_norm_from_obs(risk_est_01) + style_offset + logit_bias
+    return _sigmoid(z)
+
 def vignette_gate(env, obs):
-    """Gate on risk>threshold; pick refusal style via vignette-appropriateness."""
-    risk_est, valence, threshold = obs[1], obs[2], obs[-1]
-    if risk_est <= threshold:
+    """
+    Gate on dynamic risk threshold; if refusing, choose empathic vs constructive
+    via vignette-calibrated acceptability (logit) with a small affect-based bias.
+    """
+    risk_est_01, valence, threshold = obs[1], obs[2], obs[-1]
+
+    # Gate: comply if below threshold
+    if risk_est_01 <= threshold:
         return COMPLY
-    p_emp = _p_style(risk_est, _VG_COEF_EMPATHIC)
-    p_con = _p_style(risk_est, _VG_COEF_CONSTR)
-    # small bias to align with affective presentation
-    if valence < env.sp.empathy_valence_threshold:
-        p_emp += 0.05
-    else:
-        p_con += 0.05
-    return REFUSE_EXPLAIN_EMPATHETIC if p_emp >= p_con else REFUSE_EXPLAIN_CONSTRUCTIVE
+
+    emp_bias = _LOGIT_BIAS if valence < env.sp.empathy_valence_threshold else 0.0
+    con_bias = _LOGIT_BIAS if valence >= env.sp.empathy_valence_threshold else 0.0
+
+    p_emp = _p_style(risk_est_01, _VG_COEF_EMPATHIC, logit_bias=emp_bias)
+    p_con = _p_style(risk_est_01, _VG_COEF_CONSTR,   logit_bias=con_bias)
+
+    # Tie-break deterministically by favoring constructive
+    return (REFUSE_EXPLAIN_EMPATHETIC if p_emp > p_con else REFUSE_EXPLAIN_CONSTRUCTIVE)
 
 REGISTRY = {
     "always_comply": always_comply,

@@ -77,7 +77,7 @@ def make_logger(enabled: bool, project: str | None, entity: str | None, name: st
 
 class EvalLoggingCallback(BaseCallback):
     """Periodic eval on a fresh env; logs to (optional) W&B."""
-    def __init__(self, eval_env_fn, eval_interval, eval_episodes, reward_weights, sim_params, logger=None):
+    def __init__(self, eval_env_fn, eval_interval, eval_episodes, reward_weights, sim_params):
         super().__init__(verbose=0)
         self.eval_env_fn = eval_env_fn
         self.eval_interval = int(eval_interval)
@@ -85,7 +85,7 @@ class EvalLoggingCallback(BaseCallback):
         self._last_eval = 0
         self.rw = reward_weights
         self.sim = sim_params
-        self.logger = logger or NoopLogger()
+        # self.logger = logger or NoopLogger()
 
     def _on_training_start(self):
         cols, row = [], []
@@ -109,14 +109,14 @@ class EvalLoggingCallback(BaseCallback):
             "sim/safety_violation_prob": self.sim.safety_violation_prob,
         }
         for k, v in sim_log.items(): cols.append(k); row.append(v)
-        tbl = self.logger.table(cols, row)
-        self.logger.log({"init/param_table": tbl}, step=0)
+        # tbl = self.logger.table(cols, row)
+        # self.logger.log({"init/param_table": tbl}, step=0)
 
     def _on_step(self) -> bool:
         total_steps = self.num_timesteps
         if total_steps - self._last_eval >= self.eval_interval:
             self._last_eval = total_steps
-            self.logger.log(self._evaluate_once(), step=total_steps)
+            # self.logger.log(self._evaluate_once(), step=total_steps)
         return True
 
     def _evaluate_once(self) -> dict:
@@ -273,22 +273,22 @@ def main():
 
     for seed in seeds:
         run_name = f"{cfg.get('name','ppo_lagrangian')}_seed{seed}"
-        logger, _run = make_logger(
-            enabled=use_wandb,
-            project=project,
-            entity=entity,
-            name=run_name,
-            config={
-                "algo": "PPOLag",
-                "policy": policy,
-                "n_steps": n_steps, "batch_size": batch_size, "learning_rate": learning_rate,
-                "gamma": gamma, "gae_lambda": gae_lambda, "clip_range": clip_range,
-                "ent_coef": ent_coef, "vf_coef": vf_coef,
-                "cost_limit": cost_limit, "penalty_lr": penalty_lr,
-                "seed": seed, "total_steps": total_steps, "eval_interval": eval_interval,
-                "env": env_cfg, "reward_weights_init": rw.__dict__, "sim_params": sp.__dict__,
-            },
-        )
+        # logger, _run = make_logger(
+        #     enabled=use_wandb,
+        #     project=project,
+        #     entity=entity,
+        #     name=run_name,
+        #     config={
+        #         "algo": "PPOLag",
+        #         "policy": policy,
+        #         "n_steps": n_steps, "batch_size": batch_size, "learning_rate": learning_rate,
+        #         "gamma": gamma, "gae_lambda": gae_lambda, "clip_range": clip_range,
+        #         "ent_coef": ent_coef, "vf_coef": vf_coef,
+        #         "cost_limit": cost_limit, "penalty_lr": penalty_lr,
+        #         "seed": seed, "total_steps": total_steps, "eval_interval": eval_interval,
+        #         "env": env_cfg, "reward_weights_init": rw.__dict__, "sim_params": sp.__dict__,
+        #     },
+        # )
 
         (out_dir / run_name).mkdir(parents=True, exist_ok=True)
 
@@ -317,13 +317,13 @@ def main():
             eval_episodes=eval_episodes,
             reward_weights=rw,
             sim_params=sp,
-            logger=logger,
+            # logger=logger,
         )
 
         model.learn(total_timesteps=total_steps, callback=cb)
         ckpt = out_dir / f"{run_name}.zip"
         model.save(str(ckpt))
-        logger.finish()
+        # logger.finish()
 
 
 if __name__ == "__main__":

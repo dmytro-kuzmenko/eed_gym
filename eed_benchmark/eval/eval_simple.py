@@ -268,6 +268,92 @@ def evaluate_policy_name(policy_name: str, episodes: int,
     print(f"{m['model']:>30s}  reward={m['mean_reward']:.2f}  F1={m['f1']:.2f}")
     return m
 
+import random
+import numpy as np
+from statistics import mean, pstdev
+
+def _seed_everything(seed: int | None):
+    if seed is None:
+        return
+    try:
+        import torch
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except Exception:
+        pass
+    random.seed(seed)
+    np.random.seed(seed)
+
+def _numeric_items(d: dict):
+    """Yield (k, v) for numeric values only."""
+    for k, v in d.items():
+        try:
+            if isinstance(v, bool):
+                continue
+            fv = float(v)
+            if np.isfinite(fv):
+                yield k, fv
+        except Exception:
+            continue
+
+def evaluate_policy_multi(
+    policy: str,
+    episodes: int = 100,
+    runs: int = 5,
+    observe_valence: bool = False,
+    no_clarify_alt: bool = False,
+    holdout: bool = False,
+    seed_base: int | None = 42,
+):
+    """
+    Run a single policy multiple times and print aggregated metrics (mean ± std).
+    """
+    per_run = []
+    for i in range(runs):
+        seed = None if seed_base is None else seed_base + i
+        _seed_everything(seed)
+
+        # IMPORTANT: evaluate_policy_name(...) must return a dict of metrics
+        m = evaluate_policy_name(
+            policy,
+            episodes,
+            observe_valence,
+            no_clarify_alt,
+            holdout,
+        )
+        per_run.append(m)
+
+    # Collect numeric metrics
+    keys = [k for k, _ in _numeric_items(per_run[0])]
+    mean_dict = {}
+    std_dict  = {}
+
+    for k in keys:
+        vals = []
+        for r in per_run:
+            if k in r:
+                try:
+                    vals.append(float(r[k]))
+                except Exception:
+                    pass
+        if not vals:
+            continue
+        mean_dict[k] = float(mean(vals))
+        std_dict[k]  = float(pstdev(vals))
+
+    # Print results
+    print(f"\n=== Policy: {policy} | {runs} runs × {episodes} episodes ===")
+    print(f"{'Metric':25s} {'Mean':>10s} {'Std':>10s}")
+    print("-" * 50)
+    for k in sorted(mean_dict.keys()):
+        mval = mean_dict[k]
+        sval = std_dict.get(k, float("nan"))
+        print(f"{k:25s} {mval:10.3f} {sval:10.3f}")
+
+    return {"mean": mean_dict, "std": std_dict, "runs": per_run}
+
+
 def parse_args():
     pa = argparse.ArgumentParser()
     pa.add_argument("--config", help="Optional YAML with episodes/env flags.")
@@ -300,3 +386,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # evaluate_policy_multi("threshold", episodes=100, runs=10)

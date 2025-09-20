@@ -6,14 +6,14 @@ policy: MlpLstmPolicy
 total_steps: 600000
 eval_interval: 20000
 eval_episodes: 20
-seeds: [0, 1, 2]
+seeds: [7, 8, 9, 10]
 
 wandb:
   enabled: false
   project: eed_gym
   entity: null
 
-out_dir: results/runs
+out_dir: lastrun/lstm
 
 env:
   observe_valence: true
