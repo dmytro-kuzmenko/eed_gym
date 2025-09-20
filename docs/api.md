@@ -12,4 +12,4 @@ This is a minimal surface for users extending the benchmark.
 
 ## Evaluation helpers
 
-::: eed_benchmark.eval.eval_simple.evaluate_policy
+::: eed_benchmark.eval.id_eval.summarise_logs

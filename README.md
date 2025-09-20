@@ -1,75 +1,79 @@
-# EED-Gym: Empathic Ethical Disobedience Benchmark
+# EED Gym: Empathic Ethical Disobedience Benchmark
 
-A lightweight Gymnasium environment for studying **calibrated, empathic robot refusal** (“ethical disobedience”) with trust, affect, and blame dynamics.
+A Gymnasium-compatible environment and training stack for studying calibrated, empathic refusal ("ethical disobedience") with explicit trust, affect, and safety dynamics. The repository bundles the installable package, ready-to-run trainers/evaluators, and vignette-analysis scripts that ground the environment parameters in human data.
 
-## Features
-- Discrete actions: `COMPLY`, `REFUSE_PLAIN`, `REFUSE_EXPLAIN_[EMPATHETIC|CONSTRUCTIVE]`, `ASK_CLARIFY`, `PROPOSE_ALTERNATIVE`
-- POMDP-style state with trust (0–1), valence (−1..1), arousal (0–1), risk estimate, and dynamic threshold
-- Baselines: PPO, PPO-LSTM, MaskablePPO, Lagrangian PPO
-- Stress-test (OOD) evaluation with personas and perturbation stressors
-- Heuristic policies including thresholding and vignette-gated choices
-- Reproducible configs under `configs/`
+## Environment Setup
 
-## Install
-We recommend Python 3.12+ and a recent PyTorch build.
+### Recommended (`uv`)
 ```bash
-# using uv (recommended)
 uv pip install -e .
+```
 
-# or using pip
+### Standard `pip`
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -e .
 ```
 
+### Requirements Snapshot
+A flat dependency list generated from `uv.lock` is available at `requirements.txt` if you need to reproduce the exact environment.
+
 ## Quickstart
 ```bash
-# Train a baseline
-python -m eed_benchmark.rl.trainers.train_ppo --config configs/train/ppo.yaml
-python -m eed_benchmark.rl.trainers.train_ppo --config configs/train/ppo_lstm.yaml
+bash quickstart.sh
+```
+The helper script will:
+1. Create/activate `.venv` (if not present) and install the package
+2. Run a heuristic policy for a smoke check
+3. Train a short PPO run (`artifacts/runs/ppo/…`) and evaluate it in-distribution and under stress tests
 
-# Train PPO Masked
-python -m eed_benchmark.rl.trainers.train_ppo_masked --observe-valence --out-dir lastrun/ppo_masked --seeds 5
+## Training
+Single entry point for all PPO-family baselines:
+```bash
+# Vanilla PPO
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo
 
-# Train PPO Lag
-python -m eed_benchmark.rl.trainers.train_ppo_lagrangian --config configs/train/ppo_lagrangian.yaml
+# PPO-LStm
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lstm --seeds 0 1
 
-### EVAL
+# Maskable PPO
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked
 
-python -m scripts.st_eval --observe-valence --dir lastrun/lstm
-python -m eed_benchmark.eval.eval_simple --observe-valence --dir lastrun/lstm
+# Lagrangian PPO
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lagrangian --cost-limit 0.25
+```
+Common flags include `--total-steps`, `--learning-rate`, `--no-observe-valence`, `--disable-clarify-alt`, `--no-trust-penalty`, etc.
 
-python eed_benchmark/rl/evaluate_id.py --config configs/eval/id.yaml --weights runs/ppo/latest.zip
+## Evaluation
 
-python -m scripts.ood_eval --observe-valence --dir lastrun/ppo_masked
+### In-distribution (ID)
+```bash
+# Single checkpoint
+python -m eed_benchmark.eval.id_eval --weights artifacts/runs/ppo/ppo_seed0.zip --episodes 100
 
-### Vignette params
-python scripts/derive_vignette_params.py --csv eed_benchmark/data/vignette_53.csv --out params_n.json
+# Directory of checkpoints (aggregates across seeds)
+python -m eed_benchmark.eval.id_eval --dir artifacts/runs/ppo --episodes 100
 
-python scripts/vignette_effects.py --csv eed_benchmark/data/vignette_53_clean.csv --dv empathy --between resp_type --id pid --export results_empathy.csv
-
+# Built-in heuristics
+python -m eed_benchmark.eval.id_eval --policy threshold --episodes 100
 ```
 
-## Ablations training
-python -m eed_benchmark.rl.trainers.train_ablated
+### Stress-test (ST)
+```bash
+# Holdout personas x predefined stressors
+python scripts/st_eval.py --dir artifacts/runs/ppo --episodes 50
+```
+Use `--weights` for a single checkpoint, `--blame-mode` to toggle blame modelling, and `--json-out` to capture summaries.
 
-## Eval
---observe-valence 
-python -m eed_benchmark.eval.eval_simple --dir lastrun/ppo/no_affect
-python -m scripts.st_eval --dir lastrun/ppo/no_affect
+## Utilities
+- `scripts/derive_vignette_params.py`: fit blame/trust/vignette-gate parameters from the survey CSV
+- `scripts/vignette_effects.py`: ANOVA, pairwise effect sizes, and power analysis for vignette outcomes
+- `scripts/run_heuristic.py`: benchmark heuristic policies and optionally export episode-level stats
 
 ## Documentation
-Markdown docs live under `docs/` and can be served with MkDocs:
-```bash
-mkdocs serve
-```
-The navigation is defined in `mkdocs.yml` and includes install, quickstart, training, evaluation, and ablation guides.
-
-## Tests
-```bash
-python -m pytest -q
-```
-See `tests/smoke_test.py` for a minimal import/run check.
+MkDocs content lives under `docs/`; serve locally with `mkdocs serve`. Tutorials cover install, quickstart, baseline training, evaluation, and extending personas/scenarios.
 
 ## License
 MIT — see `LICENSE`.
-
-## Citation

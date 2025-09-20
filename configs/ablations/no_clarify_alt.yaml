@@ -1,7 +1,0 @@
-# Disable ASK_CLARIFY / PROPOSE_ALTERNATIVE and remove their incentives.
-env:
-  disable_clarify_alt: true
-
-reward_weights:
-  clarify_cost: 0.0
-  alt_progress_bonus: 0.0

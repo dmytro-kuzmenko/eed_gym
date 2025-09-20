@@ -1,19 +1,19 @@
-# 03 — Train baselines
+# 03 — Train Baselines
 
-### Vanilla PPO / LSTM (YAML + ablations)
+All baseline trainers share a single CLI.
+
 ```bash
-python scripts/train_ppo.py --config configs/train/ppo.yaml
-python scripts/train_ppo.py --config configs/train/ppo_lstm.yaml
-# with ablations (one or more):
-python scripts/train_ppo.py --config configs/train/ppo.yaml -A no_clarify_alt -A no_trust_penalty
+# Vanilla PPO (MLP)
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo
+
+# Recurrent PPO (LSTM policy)
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lstm --seeds 0 1
+
+# Maskable PPO (requires sb3-contrib)
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked --total-steps 200000
+
+# Lagrangian PPO (cost-sensitive)
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lagrangian --cost-limit 0.25
 ```
 
-### MaskablePPO
-```bash
-python scripts/train_ppo_masked.py --config configs/train/maskable_ppo.yaml
-```
-
-### Lagrangian PPO
-```bash
-python scripts/train_ppo_lagrangian.py --config configs/train/ppo_lagrangian.yaml
-```
+Helpful flags (shared across algorithms): `--total-steps`, `--learning-rate`, `--no-observe-valence`, `--no-trust-penalty`, etc.

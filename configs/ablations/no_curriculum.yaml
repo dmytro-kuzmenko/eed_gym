@@ -1,3 +1,0 @@
-# Turn off reward-weight curriculum; use initial weights throughout training.
-training:
-  curriculum: false

@@ -1,6 +1,5 @@
 # results
 
-- `ckpts/`: checkpoints (.zip) and `run_config.yaml` per run
-- `paper/`: frozen JSON summaries used to render tables/figures for the paper
+- `vignette/`: vignette statistical analyis and regression fit coefficeints
 
-You can evaluate fresh runs or just render from `paper/` snapshots.
+Evaluation or plotting scripts should treat these as read-only snapshots; regenerated outputs belong under `artifacts/`.

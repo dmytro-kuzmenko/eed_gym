@@ -1,13 +1,20 @@
 # 05 — Ablations
 
-We ship small YAML overrides and allow CLI short names:
+The minimalist release drops YAML overrides; instead, flip ablations via CLI flags or light code edits.
 
-- `no_affect` (`no_valence_obs.yaml`) — hide valence in the observation
-- `no_clarify_alt` — remove ASK_CLARIFY and PROPOSE_ALTERNATIVE actions
-- `no_curriculum` — disable reward scheduling
-- `no_trust_penalty` — set trust_deviation weight to 0
-
-Use them like:
 ```bash
-python scripts/train_ppo.py --config configs/train/ppo.yaml -A no_clarify_alt -A no_trust_penalty
+# Hide affect in the observation vector
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo --no-observe-valence
+
+# Remove clarify + propose-alternative actions
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo --disable-clarify-alt
+
+# Disable the curriculum schedule on safety/blame weights
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo --no-curriculum
+
+# Remove the trust deviation penalty
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo --no-trust-penalty
 ```
+
+For other reward-weight tweaks, adjust the `RewardWeights` dataclass in
+`eed_benchmark/envs/empathic_disobedience_env.py` before launch.

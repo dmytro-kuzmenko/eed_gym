@@ -13,22 +13,20 @@ else
   pip install -e .
 fi
 
-python -m eed_benchmark.eval.eval_simple --policy threshold --episodes 50 || true
+python -m eed_benchmark.eval.id_eval --policy threshold --episodes 50 || true
 
-# Tiny PPO train (base config)
-if [[ -f "scripts/train_ppo.py" ]]; then
-  python scripts/train_ppo.py --config configs/train/ppo.yaml || true
-fi
+# Tiny PPO train (built-in defaults)
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo --total-steps 200000 --seeds 0 || true
 
-CKPT="$(ls -1 results/runs/*_seed*.zip 2>/dev/null | head -n 1 || true)"
+CKPT="$(ls -1 artifacts/runs/ppo/*.zip 2>/dev/null | head -n 1 || true)"
 if [[ -n "${CKPT}" ]]; then
   echo "Checkpoint: ${CKPT}"
-  python -m eed_benchmark.eval.eval_simple --weights "${CKPT}" --episodes 50 || true
-  if [[ -f "scripts/evaluate_ood.py" ]]; then
-    python scripts/evaluate_ood.py --config configs/eval/ood.yaml --weights "${CKPT}" --episodes 20 || true
+  python -m eed_benchmark.eval.id_eval --weights "${CKPT}" --episodes 50 || true
+  if [[ -f "scripts/st_eval.py" ]]; then
+    python scripts/st_eval.py --dir "$(dirname "${CKPT}")" --episodes 20 || true
   fi
 else
-  echo "No checkpoint found under results/runs/ (train step may have been skipped)."
+  echo "No checkpoint found under artifacts/runs/ppo/ (train step may have been skipped)."
 fi
 
 echo "Quickstart done."

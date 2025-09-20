@@ -4,8 +4,7 @@
 bash quickstart.sh
 ```
 
-This will:
-1) Install the package (editable)
-2) Run a heuristic eval
-3) Train a tiny PPO run
-4) Evaluate the produced checkpoint (ID + short OOD)
+The script will:
+1. Create/activate `.venv` and install the package
+2. Run a heuristic evaluation for sanity
+3. Train a short PPO run and evaluate the resulting checkpoint (ID + stress-test)
