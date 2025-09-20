@@ -11,3 +11,5 @@ wheels/
 
 wandb
 ckpts
+
+.DS_Store
