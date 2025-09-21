@@ -1,53 +1,40 @@
-"""Utility metrics for EED-Gym evaluations.
+"""Lightweight metric helpers for the EED benchmark.
 
-The helpers in this module avoid heavy dependencies (e.g., scikit-learn) while
-covering the handful of metrics we report in the paper:
+The original implementation avoided heavy dependencies such as scikit-learn
+while still providing the small collection of metrics reported in the paper.
+This module mirrors that behaviour closely:
 
-* ROC-AUC                         via the Mann–Whitney formulation
-* PR-AUC                          via sorted precision/recall deltas
-* Brier score                     (optionally using bin-averaged probabilities)
-* Expected Calibration Error      given either raw samples or per-bin stats
+* ROC-AUC via the Mann–Whitney formulation (with tie handling)
+* PR-AUC via accumulated precision deltas
+* Brier score, optionally using bin-averaged probabilities
+* Expected Calibration Error from either raw samples or bin statistics
 
-All inputs are NumPy arrays; functions try to mirror scikit-learn semantics
-when it is sensible (e.g., returning ``nan`` if only one class is present).
+All functions operate on NumPy arrays and return ``nan`` when a metric is
+ill-defined (for example, AUROC with a single class present).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Iterable
+from typing import Tuple
 
 import numpy as np
 
 
-@dataclass(frozen=True)
-class BinStats:
-    """Container for calibration bin statistics."""
+def _safe_counts(labels: np.ndarray) -> Tuple[int, int]:
+    """Return the number of positive and negative labels."""
 
-    counts: np.ndarray
-    pred_rates: np.ndarray
-    true_rates: np.ndarray
-
-    def ece(self) -> float:
-        total = int(self.counts.sum())
-        if total == 0:
-            return 0.0
-        weights = self.counts / total
-        return float(np.sum(weights * np.abs(self.pred_rates - self.true_rates)))
-
-
-def _count_pos_neg(labels: np.ndarray) -> tuple[int, int]:
+    labels = np.asarray(labels, dtype=int)
     pos = int(labels.sum())
     neg = int(labels.size - pos)
     return pos, neg
 
 
-def roc_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    """Area under the ROC curve (Mann–Whitney U)."""
+def roc_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """Area under the ROC curve using the Mann–Whitney U equivalence."""
 
     y_true = np.asarray(y_true, dtype=int)
     y_score = np.asarray(y_score, dtype=float)
-    pos, neg = _count_pos_neg(y_true)
+    pos, neg = _safe_counts(y_true)
     if pos == 0 or neg == 0:
         return float("nan")
 
@@ -55,10 +42,10 @@ def roc_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
     ranks = np.empty_like(order, dtype=float)
     ranks[order] = np.arange(1, len(y_score) + 1, dtype=float)
 
-    # average ranks for ties
-    values, inverse, counts = np.unique(y_score, return_inverse=True, return_counts=True)
-    for idx, c in enumerate(counts):
-        if c > 1:
+    # Average the ranks for tied scores.
+    _, inverse, counts = np.unique(y_score, return_inverse=True, return_counts=True)
+    for idx, count in enumerate(counts):
+        if count > 1:
             mask = inverse == idx
             ranks[mask] = ranks[mask].mean()
 
@@ -67,22 +54,21 @@ def roc_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
     return float(auc)
 
 
-def pr_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    """Area under the precision–recall curve."""
+def pr_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """Area under the precision–recall curve by cumulative deltas."""
 
     y_true = np.asarray(y_true, dtype=int)
     y_score = np.asarray(y_score, dtype=float)
-    pos, neg = _count_pos_neg(y_true)
+    pos, neg = _safe_counts(y_true)
     if pos == 0 or neg == 0:
         return float("nan")
 
     order = np.argsort(-y_score, kind="mergesort")
-    y_sorted = y_true[order]
-
+    truth_sorted = y_true[order]
     tp = fp = 0
     prev_recall = 0.0
     auc = 0.0
-    for truth in y_sorted:
+    for truth in truth_sorted:
         if truth == 1:
             tp += 1
         else:
@@ -94,8 +80,8 @@ def pr_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
     return float(auc)
 
 
-def brier_score(y_true: np.ndarray, y_prob: np.ndarray) -> float:
-    """Standard Brier score on probabilities."""
+def brier_score_prob(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    """Classic Brier score between labels and probability estimates."""
 
     y_true = np.asarray(y_true, dtype=float)
     y_prob = np.asarray(y_prob, dtype=float)
@@ -103,12 +89,13 @@ def brier_score(y_true: np.ndarray, y_prob: np.ndarray) -> float:
 
 
 def brier_score_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 10) -> float:
-    """Brier score using empirical bin means as probabilities."""
+    """Brier score using empirical bin means as probability estimates."""
 
     y_true = np.asarray(y_true, dtype=int)
     y_score = np.asarray(y_score, dtype=float)
     edges = np.linspace(0.0, 1.0, bins + 1)
-    probs = np.zeros_like(y_score)
+    y_prob = np.zeros_like(y_score, dtype=float)
+
     for idx in range(bins):
         left, right = edges[idx], edges[idx + 1]
         if idx == bins - 1:
@@ -116,44 +103,61 @@ def brier_score_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 10) 
         else:
             mask = (y_score >= left) & (y_score < right)
         if mask.any():
-            probs[mask] = y_true[mask].mean()
-    return brier_score(y_true, probs)
+            y_prob[mask] = y_true[mask].mean()
+
+    return brier_score_prob(y_true, y_prob)
 
 
-def calibration_bins(y_prob: np.ndarray, y_true: np.ndarray, bins: int = 10) -> BinStats:
-    """Compute per-bin predicted/true rates for calibration plots."""
+def calibration_ece_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 10) -> float:
+    """Expected Calibration Error from raw samples via equal-width bins."""
 
-    y_prob = np.asarray(y_prob, dtype=float)
     y_true = np.asarray(y_true, dtype=int)
-    edges = np.linspace(0.0, 1.0, bins + 1)
-    counts = np.zeros(bins, dtype=int)
-    pred_rates = np.zeros(bins, dtype=float)
-    true_rates = np.zeros(bins, dtype=float)
+    y_score = np.asarray(y_score, dtype=float)
+    if y_true.size == 0:
+        return 0.0
 
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    total = y_true.size
+    ece = 0.0
     for idx in range(bins):
         left, right = edges[idx], edges[idx + 1]
-        mask = (y_prob >= left) & (y_prob <= right if idx == bins - 1 else y_prob < right)
-        counts[idx] = int(mask.sum())
-        if counts[idx] == 0:
+        if idx == bins - 1:
+            mask = (y_score >= left) & (y_score <= right)
+        else:
+            mask = (y_score >= left) & (y_score < right)
+        count = mask.sum()
+        if count == 0:
             continue
-        pred_rates[idx] = float(np.clip(y_prob[mask].mean(), 0.0, 1.0))
-        true_rates[idx] = float(y_true[mask].mean())
-
-    return BinStats(counts=counts, pred_rates=pred_rates, true_rates=true_rates)
-
-
-def expected_calibration_error(y_prob: np.ndarray, y_true: np.ndarray, bins: int = 10) -> float:
-    """ECE computed from raw samples."""
-
-    return calibration_bins(y_prob, y_true, bins=bins).ece()
+        true_rate = float(y_true[mask].mean())
+        pred_rate = float(np.clip(y_score[mask].mean(), 0.0, 1.0))
+        ece += (count / total) * abs(pred_rate - true_rate)
+    return float(ece)
 
 
-def expected_calibration_error_from_bins(counts: Iterable[int], pred_rates: Iterable[float], true_rates: Iterable[float]) -> float:
-    """ECE computed from already-aggregated bin statistics."""
+def ece_from_bin_rates(bin_counts: np.ndarray, pred_rates: np.ndarray, true_rates: np.ndarray) -> float:
+    """Expected Calibration Error given pre-computed bin statistics."""
 
-    stats = BinStats(
-        counts=np.asarray(list(counts), dtype=int),
-        pred_rates=np.asarray(list(pred_rates), dtype=float),
-        true_rates=np.asarray(list(true_rates), dtype=float),
-    )
-    return stats.ece()
+    bin_counts = np.asarray(bin_counts, dtype=float)
+    pred_rates = np.asarray(pred_rates, dtype=float)
+    true_rates = np.asarray(true_rates, dtype=float)
+
+    total = bin_counts.sum()
+    if total == 0:
+        return 0.0
+    weights = bin_counts / total
+    return float(np.sum(weights * np.abs(pred_rates - true_rates)))
+
+
+# Backwards-compatible aliases ------------------------------------------------
+
+def roc_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """Alias for code paths that import the old name."""
+
+    return roc_auc_score_from_scores(y_true, y_score)
+
+
+def pr_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
+    """Alias for the PR-AUC helper."""
+
+    return pr_auc_score_from_scores(y_true, y_score)
+

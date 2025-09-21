@@ -22,7 +22,7 @@ A flat dependency list generated from `uv.lock` is available at `requirements.tx
 
 ## Quickstart
 ```bash
-bash quickstart.sh
+bash scripts/quickstart.sh
 ```
 The helper script will:
 1. Create/activate `.venv` (if not present) and install the package

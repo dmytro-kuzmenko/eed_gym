@@ -22,8 +22,8 @@ CKPT="$(ls -1 artifacts/runs/ppo/*.zip 2>/dev/null | head -n 1 || true)"
 if [[ -n "${CKPT}" ]]; then
   echo "Checkpoint: ${CKPT}"
   python -m eed_benchmark.eval.id_eval --weights "${CKPT}" --episodes 50 || true
-  if [[ -f "scripts/st_eval.py" ]]; then
-    python scripts/st_eval.py --dir "$(dirname "${CKPT}")" --episodes 20 || true
+  if [[ -f "eed_benchmark/eval/st_eval.py" ]]; then
+    python eed_benchmark/eval/st_eval.py --dir "$(dirname "${CKPT}")" --episodes 20 || true
   fi
 else
   echo "No checkpoint found under artifacts/runs/ppo/ (train step may have been skipped)."

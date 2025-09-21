@@ -1,4 +1,4 @@
-"""Stress-test (OOD) evaluation across holdout personas and stressors."""
+"""Stress-test evaluation mirroring the legacy ``eval_dir_ood_means`` helper."""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from eed_benchmark.eval.id_eval import (
     detect_agent_type,
     load_checkpoint_agent,
     make_eval_env,
-    print_aggregate,
     rollout_agent,
     summarise_logs,
 )
@@ -43,6 +42,8 @@ STRESSORS: Sequence[Dict[str, object]] = (
 
 @dataclass
 class StressResult:
+    """Container capturing metrics for a persona × stressor combination."""
+
     summary: EvalSummary
     persona: str
     stressor: str
@@ -53,15 +54,28 @@ class StressResult:
         return payload
 
 
+def _unwrap_env(env):
+    """Peel back common SB3 wrappers to access the underlying environment."""
+
+    base = env
+    # Handle SB3 wrappers (e.g., ActionMasker)
+    while hasattr(base, "env"):
+        base = getattr(base, "env")
+    return getattr(base, "unwrapped", base)
+
+
 def apply_stressor(env: EmpathicDisobedienceEnv, stress: Dict[str, object]) -> None:
+    """Mutate environment parameters according to a stressor specification."""
+
+    base_env = _unwrap_env(env)
     if "noise_std" in stress:
-        env.sp.noise_std = stress["noise_std"]  # type: ignore[assignment]
+        base_env.sp.noise_std = stress["noise_std"]  # type: ignore[assignment]
     if "safety_violation_prob" in stress:
-        env.sp.safety_violation_prob = stress["safety_violation_prob"]  # type: ignore[assignment]
+        base_env.sp.safety_violation_prob = stress["safety_violation_prob"]  # type: ignore[assignment]
     if "trust_coeff" in stress:
-        env.sp.risk_threshold_trust_coeff = stress["trust_coeff"]  # type: ignore[assignment]
+        base_env.sp.risk_threshold_trust_coeff = stress["trust_coeff"]  # type: ignore[assignment]
     if "valence_coeff" in stress:
-        env.sp.risk_threshold_valence_coeff = stress["valence_coeff"]  # type: ignore[assignment]
+        base_env.sp.risk_threshold_valence_coeff = stress["valence_coeff"]  # type: ignore[assignment]
 
 
 def evaluate_checkpoint(
@@ -71,12 +85,20 @@ def evaluate_checkpoint(
     disable_clarify_alt: bool,
     blame_mode: str,
 ) -> Dict[str, object]:
+    """Evaluate a single checkpoint across all personas and stressors."""
+
     algo = detect_agent_type(path)
     stress_results: List[StressResult] = []
 
     for persona in HOLDOUT_PROFILES:
         for stress in STRESSORS:
-            env = make_eval_env(observe_valence, disable_clarify_alt, needs_masker=(algo == "maskable"), blame_mode=blame_mode)
+            env = make_eval_env(
+                observe_valence=observe_valence,
+                disable_clarify_alt=disable_clarify_alt,
+                holdout=False,
+                needs_masker=(algo == "maskable"),
+                blame_mode=blame_mode,
+            )
             env.profiles = [persona]
             apply_stressor(env, stress)
             agent = load_checkpoint_agent(path, env, algo)
@@ -84,24 +106,30 @@ def evaluate_checkpoint(
             summary = summarise_logs(path.name, logs)
             stress_results.append(StressResult(summary=summary, persona=persona.name, stressor=stress["name"]))
 
-    aggregate = aggregate_summaries([r.summary for r in stress_results])
-    means = {k: v["mean"] for k, v in aggregate.items()}
-    checkpoint_summary = EvalSummary(model=path.name, **means)
+    summaries = [r.summary for r in stress_results]
+    aggregate = aggregate_summaries(summaries)
+    keys = [k for k in summaries[0].as_dict().keys() if k != "model"] if summaries else []
+    mean_metrics = {k: float(np.mean([getattr(s, k) for s in summaries])) for k in keys}
 
+    # Print checkpoint-level mean-of-means (matching legacy script)
     print(
-        f"{path.name:>32s} | refusals={means['mean_refusals']:.3f} "
-        f"trust={means['mean_trust']:.3f} unsafe={means['unsafe_rate']:.3f} f1={means['f1']:.3f}"
+        f"{path.name:30s} f1={mean_metrics['f1']:.3f} "
+        f"refusals={mean_metrics['mean_refusals']:.3f} "
+        f"trust={mean_metrics['mean_trust']:.3f} "
+        f"unsafe={mean_metrics['unsafe_rate']:.3f}"
     )
 
     return {
         "checkpoint": path.name,
         "stress_results": [result.as_dict() for result in stress_results],
         "aggregate": aggregate,
-        "summary": checkpoint_summary.as_dict(),
+        "mean_metrics": mean_metrics,
     }
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the stress-test CLI."""
+
     parser = argparse.ArgumentParser(description="OOD stress-test evaluation on EED-Gym")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--weights", type=Path, help="Single checkpoint (.zip) to evaluate")
@@ -121,36 +149,51 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """CLI entry point compatible with the original stress-test script."""
+
     args = parse_args()
     observe_valence = not args.no_observe_valence
     disable_clarify_alt = bool(args.disable_clarify_alt)
 
+    dir_path = args.dir
+    checkpoints = []
     if args.weights:
-        payload = evaluate_checkpoint(args.weights, args.episodes, observe_valence, disable_clarify_alt, args.blame_mode)
-        if args.json_out:
-            args.json_out.write_text(json.dumps(payload, indent=2))
-            print(f"saved summary to {args.json_out}")
-    else:
-        dir_path = args.dir
+        checkpoints = [Path(args.weights)]
+    elif dir_path:
+        dir_path = Path(dir_path)
         checkpoints = sorted(p for p in dir_path.glob("*.zip") if p.is_file())
         if not checkpoints:
             raise ValueError(f"No checkpoints found under {dir_path}")
+        print(f"=== Evaluating {len(checkpoints)} checkpoints in: {dir_path} ===")
+    else:
+        raise ValueError("Provide either --weights or --dir")
 
-        all_payloads = [
-            evaluate_checkpoint(ckpt, args.episodes, observe_valence, disable_clarify_alt, args.blame_mode)
-            for ckpt in checkpoints
-        ]
+    grand: Dict[str, List[float]] = {"f1": [], "mean_refusals": [], "mean_trust": [], "unsafe_rate": []}
+    all_payloads = []
 
-        checkpoint_summaries = [
-            EvalSummary(**payload["summary"]) for payload in all_payloads
-        ]
-        aggregate = aggregate_summaries(checkpoint_summaries)
-        print_aggregate(aggregate)
+    for ckpt in checkpoints:
+        payload = evaluate_checkpoint(ckpt, args.episodes, observe_valence, disable_clarify_alt, args.blame_mode)
+        all_payloads.append(payload)
+        for key in grand:
+            value = payload["mean_metrics"].get(key)
+            if value is not None and not np.isnan(value):
+                grand[key].append(value)
 
-        if args.json_out:
-            args.json_out.write_text(json.dumps({"checkpoints": all_payloads, "aggregate": aggregate}, indent=2))
-            print(f"saved summary to {args.json_out}")
+    if len(checkpoints) > 1 and all(grand[key] for key in grand):
+        print("\n=== Grand average across checkpoints ===")
+        print(
+            "f1={:.3f}  refusals={:.3f}  trust={:.3f}  unsafe={:.3f}".format(
+                np.mean(grand["f1"]),
+                np.mean(grand["mean_refusals"]),
+                np.mean(grand["mean_trust"]),
+                np.mean(grand["unsafe_rate"]),
+            )
+        )
+
+    if args.json_out:
+        args.json_out.write_text(json.dumps({"checkpoints": all_payloads}, indent=2))
+        print(f"saved summary to {args.json_out}")
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entry
+if __name__ == "__main__":
     main()
