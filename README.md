@@ -30,12 +30,12 @@ The helper script will:
 3. Train a short PPO run (`artifacts/runs/ppo/…`) and evaluate it in-distribution and under stress tests
 
 ## Training
-Single entry point for all PPO-family baselines:
+Single entry point for training all PPO-family baselines:
 ```bash
 # Vanilla PPO
 python -m eed_benchmark.rl.trainers.train_ppo --algo ppo
 
-# PPO-LStm
+# PPO-LSTM
 python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lstm --seeds 0 1
 
 # Maskable PPO
@@ -67,8 +67,15 @@ python scripts/st_eval.py --dir artifacts/runs/ppo --episodes 50
 ```
 Use `--weights` for a single checkpoint, `--blame-mode` to toggle blame modelling, and `--json-out` to capture summaries.
 
+Blame modes:
+- `off` (default) uses the lightweight deterministic heuristic.
+- `risk_only` switches to the vignette-based blame model only when the command
+  is risky (or the perceived risk exceeds the gate configured in
+  `SimParams`).
+- `always` forces the vignette-based model for every step.
+
 ## Utilities
-- `scripts/derive_vignette_params.py`: fit blame/trust/vignette-gate parameters from the survey CSV
+- `scripts/derive_vignette_params.py`: fit blame/trust/vignette-gate parameters from the cleaned survey CSV
 - `scripts/vignette_effects.py`: ANOVA, pairwise effect sizes, and power analysis for vignette outcomes
 - `scripts/run_heuristic.py`: benchmark heuristic policies and optionally export episode-level stats
 

@@ -33,7 +33,7 @@ from eed_benchmark.eval.metrics import (
     roc_auc_score_from_scores,
 )
 
-try:  # Optional dependencies
+try:
     from sb3_contrib.common.wrappers import ActionMasker
     from sb3_contrib.ppo_mask import MaskablePPO
 except Exception:  
@@ -118,7 +118,7 @@ def _valid_action_mask(env: EmpathicDisobedienceEnv) -> np.ndarray:
     """Return a boolean mask of valid actions for maskable PPO."""
 
     if hasattr(env, "valid_action_mask") and callable(getattr(env, "valid_action_mask")):
-        return env.valid_action_mask()  # type: ignore[no-any-return]
+        return env.valid_action_mask()
     return np.ones(env.action_space.n, dtype=bool)
 
 
@@ -161,7 +161,7 @@ def make_eval_env(
     if holdout and hasattr(env, "profiles"):
         profiles = getattr(env, "profiles")
         if profiles:
-            env.profiles = [profiles[0]]  # type: ignore[attr-defined]
+            env.profiles = [profiles[0]]
     if needs_masker:
         if ActionMasker is None:
             raise RuntimeError("MaskablePPO requested but sb3-contrib is not installed.")
@@ -572,5 +572,5 @@ def main() -> None:
         print(f"saved summary to {args.json_out}")
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entry
+if __name__ == "__main__":
     main()

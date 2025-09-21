@@ -24,15 +24,12 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-try:  # pragma: no cover - allow importing without gym installed
+try:
     import gymnasium as gym
     from gymnasium import spaces
-except ImportError as exc:  # pragma: no cover - surface a friendly error
+except ImportError as exc:
     raise ImportError("Please install gymnasium: pip install gymnasium") from exc
 
-# ---------------------------------------------------------------------------
-# Action definitions
-# ---------------------------------------------------------------------------
 COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, ASK_CLARIFY, PROPOSE_ALTERNATIVE, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE = range(7)
 
 ACTION_NAMES = [
@@ -44,10 +41,6 @@ ACTION_NAMES = [
     "REFUSE_EXPLAIN_EMPATHETIC",
     "REFUSE_EXPLAIN_CONSTRUCTIVE",
 ]
-
-# ---------------------------------------------------------------------------
-# Configuration dataclasses
-# ---------------------------------------------------------------------------
 
 @dataclass
 class RewardWeights:
@@ -175,9 +168,14 @@ def blame_score_vignette_based(
     return float(max(0.0, min(1.0, base)))
 
 
-# Centre and band from vignette statistics (Section 3.4 of the paper)
+# Centre and band from vignette statistics 
+# (see derive_vignette_params.py and Section 3.4 of the paper)
 TRUST_REF = 0.703
 TRUST_BAND = (0.603, 0.803)
+
+# Learned deltas for trust and valence
+TRUST_B = {"bias": -0.02, "comply": -0.08, "ref_emp": +0.04, "ref_con": +0.03, "risk": -0.05, "risk*refuse": +0.02}
+VAL_B   = {"bias": -0.01, "comply": -0.03, "ref_emp": +0.03, "ref_con": +0.02, "risk": -0.02}
 
 
 def trust_hinge(trust: float, low: float = TRUST_BAND[0], high: float = TRUST_BAND[1]) -> float:
@@ -204,12 +202,6 @@ def _default_blame(command_risky: bool, action: int, safety_violation: bool, unj
     if action == ASK_CLARIFY:
         return 0.1
     return 0.3
-
-
-# Learned deltas for trust and valence
-TRUST_B = {"bias": -0.02, "comply": -0.08, "ref_emp": +0.04, "ref_con": +0.03, "risk": -0.05, "risk*refuse": +0.02}
-VAL_B   = {"bias": -0.01, "comply": -0.03, "ref_emp": +0.03, "ref_con": +0.02, "risk": -0.02}
-
 
 def predict_delta(coeffs: Dict[str, float], action_name: str, risk01: float, is_refusal: bool) -> float:
     r = max(0.0, min(1.0, float(risk01)))
@@ -275,9 +267,6 @@ class EmpathicDisobedienceEnv(gym.Env):
 
         self.reset()
 
-    # ------------------------------------------------------------------
-    # Sampling helpers
-    # ------------------------------------------------------------------
     def _sample_profile(self) -> HumanProfile:
         return self.rng.choice(self.profiles)
 
@@ -298,9 +287,6 @@ class EmpathicDisobedienceEnv(gym.Env):
         val_term = self.sp.risk_threshold_valence_coeff * max(0.0, -self.valence)
         return self.sp.risk_threshold_base + trust_term + val_term
 
-    # ------------------------------------------------------------------
-    # Gym API
-    # ------------------------------------------------------------------
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
         if seed is not None:
             self.rng.seed(seed)
@@ -430,11 +416,10 @@ class EmpathicDisobedienceEnv(gym.Env):
                 dV += -0.01
                 dT += -0.01
 
-        # Soft explanation modifiers (kept deliberately marginal).
         mitigation = self.sp.explanation_valence_mitigation if explanation_used else 1.0
-        dV += -0.05 * 0.1 * (mitigation - 1.0)
+        dV += -0.05 * 0.05 * (mitigation - 1.0)
         if explanation_used:
-            dT += 0.1 * self.sp.explanation_trust_boost
+            dT += 0.05 * self.sp.explanation_trust_boost
 
         self.valence = float(np.clip(self.valence * (1 - self.sp.valence_decay) + dV, -1, 1))
         self.arousal = float(np.clip(self.arousal * (1 - self.sp.arousal_decay) + dA, 0, 1))
@@ -533,7 +518,7 @@ class EmpathicDisobedienceEnv(gym.Env):
         threshold = np.array([self._risk_threshold()], dtype=np.float32)
         return np.concatenate([np.asarray(core, np.float32), last_action_onehot, last_outcome_flags, threshold])
 
-    def render(self):  # pragma: no cover - kept for API completeness
+    def render(self):
         return None
 
 

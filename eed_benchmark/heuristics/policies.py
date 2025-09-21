@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import exp
-from typing import Callable, Dict, Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from eed_benchmark.envs.empathic_disobedience_env import (
     COMPLY,
@@ -26,7 +26,7 @@ PolicyFn = Callable[["EnvProtocol", Observation], int]
 class EnvProtocol:
     """Minimal protocol describing what the heuristics need from the env."""
 
-    sp: object  # SimParams (must expose empathy_valence_threshold)
+    sp: object
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class VignetteGateParams:
     risk_coef: float = 0.227
     empathic_coef: float = 0.195
     constructive_coef: float = -0.195
-    affect_bias: float = 0.20  # ≈5% swing around p=0.5
+    affect_bias: float = 0.20
 
     def risk_z(self, risk_estimate: float) -> float:
         """Map env risk (0..1) to a z-score on the 7-point Likert scale."""

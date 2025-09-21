@@ -1,4 +1,4 @@
-# ppo_lag_sb3.py
+#!/usr/bin/env python3
 import torch as th
 from torch import nn
 from stable_baselines3 import PPO
@@ -19,10 +19,8 @@ class PPOLag(PPO):
         super().__init__(*args, **kwargs)
         self.cost_limit = float(cost_limit)
         self.penalty_lr = float(penalty_lr)
-        # store λ in unconstrained log-space; softplus keeps it ≥ 0
         self._log_lam = nn.Parameter(th.tensor(0.0), requires_grad=False)
 
-    # ------------------------------------------------------------------ #
     def _compute_cost_advantages(self) -> th.Tensor:
         infos = getattr(self.rollout_buffer, "infos", None)
         if infos is None or len(infos) == 0:
@@ -36,7 +34,6 @@ class PPOLag(PPO):
             adv = th.zeros_like(adv)
         return adv
 
-    # ------------------------------------------------------------------ #
     def _update_policy_using_rollout_buffer(self) -> None:
         """Override PPO update to add λ·J_cost and update λ via dual ascent."""
         lam = th.nn.functional.softplus(self._log_lam)
@@ -62,16 +59,11 @@ class PPOLag(PPO):
                 loss.backward()
                 self.policy.optimizer.step()
 
-        # Dual ascent on λ using mean cost across buffer
         infos = getattr(self.rollout_buffer, "infos", [])
         if len(infos) > 0:
             costs = th.tensor([float(info.get("cost", 0.0)) for info in infos], device=self.device)
             ep_cost = costs.mean().item()
             lam_val = th.nn.functional.softplus(self._log_lam).item()
             lam_new = max(0.0, lam_val + self.penalty_lr * (ep_cost - self.cost_limit))
-            # inverse softplus: log(exp(lam)−1)
             self._log_lam.data = th.log(th.expm1(th.tensor(lam_new)) + 1e-8)
-
-    # ------------------------------------------------------------------ #
-    #  we keep everything else (collect_rollouts, value updates, etc.)
-    #  exactly as in PPO – no other overrides needed.
+            

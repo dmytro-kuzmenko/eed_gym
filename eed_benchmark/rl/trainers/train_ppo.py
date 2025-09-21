@@ -26,15 +26,15 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecEnvWrapper
 
 from eed_benchmark.envs.empathic_disobedience_env import EmpathicDisobedienceEnv, RewardWeights, SimParams
 
-try:  # Optional variants
+try:
     from sb3_contrib import RecurrentPPO
-except Exception:  # pragma: no cover - optional dependency
+except Exception:
     RecurrentPPO = None
 
 try:
     from sb3_contrib.ppo_mask import MaskablePPO
     from sb3_contrib.common.wrappers import ActionMasker
-except Exception:  # pragma: no cover - optional dependency
+except Exception:
     MaskablePPO = None
     ActionMasker = None
 
@@ -64,7 +64,7 @@ class EpisodeStatsWrapper(VecEnvWrapper):
         self.current_ep_reward = np.zeros(self.num_envs)
         self.current_ep_len = np.zeros(self.num_envs)
 
-    def step_wait(self):  # pragma: no cover - relies on SB3 runtime
+    def step_wait(self):
         obs, rew, done, infos = self.venv.step_wait()
         self.current_ep_reward += rew
         self.current_ep_len += 1
@@ -74,7 +74,7 @@ class EpisodeStatsWrapper(VecEnvWrapper):
                 self.current_ep_len[i] = 0
         return obs, rew, done, infos
 
-    def reset(self):  # pragma: no cover - SB3 runtime
+    def reset(self):
         return self.venv.reset()
 
 
@@ -101,7 +101,7 @@ class EvalCallback(BaseCallback):
         self.sim = sim_params
         self.recurrent = recurrent
 
-    def _on_step(self) -> bool:  # pragma: no cover - SB3 runtime
+    def _on_step(self) -> bool:
         total_steps = self.num_timesteps
         if self.curriculum:
             schedule_reward_weights(self.rw, total_steps / max(1, self.model._total_timesteps))
@@ -375,5 +375,5 @@ def main():
         model.save(str(ckpt_path))
 
 
-if __name__ == "__main__":  # pragma: no cover - CLI entry
+if __name__ == "__main__":
     main()

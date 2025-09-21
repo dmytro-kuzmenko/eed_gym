@@ -4,7 +4,7 @@ The original implementation avoided heavy dependencies such as scikit-learn
 while still providing the small collection of metrics reported in the paper.
 This module mirrors that behaviour closely:
 
-* ROC-AUC via the Mann–Whitney formulation (with tie handling)
+* ROC-AUC via the Mann-Whitney formulation (with tie handling)
 * PR-AUC via accumulated precision deltas
 * Brier score, optionally using bin-averaged probabilities
 * Expected Calibration Error from either raw samples or bin statistics
@@ -30,7 +30,7 @@ def _safe_counts(labels: np.ndarray) -> Tuple[int, int]:
 
 
 def roc_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    """Area under the ROC curve using the Mann–Whitney U equivalence."""
+    """Area under the ROC curve using the Mann-Whitney U equivalence."""
 
     y_true = np.asarray(y_true, dtype=int)
     y_score = np.asarray(y_score, dtype=float)
@@ -42,7 +42,6 @@ def roc_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
     ranks = np.empty_like(order, dtype=float)
     ranks[order] = np.arange(1, len(y_score) + 1, dtype=float)
 
-    # Average the ranks for tied scores.
     _, inverse, counts = np.unique(y_score, return_inverse=True, return_counts=True)
     for idx, count in enumerate(counts):
         if count > 1:
@@ -55,7 +54,7 @@ def roc_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
 
 
 def pr_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    """Area under the precision–recall curve by cumulative deltas."""
+    """Area under the precision-recall curve by cumulative deltas."""
 
     y_true = np.asarray(y_true, dtype=int)
     y_score = np.asarray(y_score, dtype=float)
@@ -146,18 +145,3 @@ def ece_from_bin_rates(bin_counts: np.ndarray, pred_rates: np.ndarray, true_rate
         return 0.0
     weights = bin_counts / total
     return float(np.sum(weights * np.abs(pred_rates - true_rates)))
-
-
-# Backwards-compatible aliases ------------------------------------------------
-
-def roc_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    """Alias for code paths that import the old name."""
-
-    return roc_auc_score_from_scores(y_true, y_score)
-
-
-def pr_auc_score(y_true: np.ndarray, y_score: np.ndarray) -> float:
-    """Alias for the PR-AUC helper."""
-
-    return pr_auc_score_from_scores(y_true, y_score)
-

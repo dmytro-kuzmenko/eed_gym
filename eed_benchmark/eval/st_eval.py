@@ -1,14 +1,17 @@
-"""Stress-test evaluation mirroring the legacy ``eval_dir_ood_means`` helper."""
+"""Stress-test evaluation script."""
 
 from __future__ import annotations
 
 import argparse
+import io
 import json
+from contextlib import contextmanager, redirect_stdout
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, List, Sequence
 
 import numpy as np
+from tqdm import tqdm
 
 from eed_benchmark.envs.empathic_disobedience_env import EmpathicDisobedienceEnv, HOLDOUT_PROFILES
 from eed_benchmark.eval.id_eval import (
@@ -42,7 +45,7 @@ STRESSORS: Sequence[Dict[str, object]] = (
 
 @dataclass
 class StressResult:
-    """Container capturing metrics for a persona × stressor combination."""
+    """Container capturing metrics for a persona x stressor combination."""
 
     summary: EvalSummary
     persona: str
@@ -58,7 +61,6 @@ def _unwrap_env(env):
     """Peel back common SB3 wrappers to access the underlying environment."""
 
     base = env
-    # Handle SB3 wrappers (e.g., ActionMasker)
     while hasattr(base, "env"):
         base = getattr(base, "env")
     return getattr(base, "unwrapped", base)
@@ -69,13 +71,22 @@ def apply_stressor(env: EmpathicDisobedienceEnv, stress: Dict[str, object]) -> N
 
     base_env = _unwrap_env(env)
     if "noise_std" in stress:
-        base_env.sp.noise_std = stress["noise_std"]  # type: ignore[assignment]
+        base_env.sp.noise_std = stress["noise_std"]
     if "safety_violation_prob" in stress:
-        base_env.sp.safety_violation_prob = stress["safety_violation_prob"]  # type: ignore[assignment]
+        base_env.sp.safety_violation_prob = stress["safety_violation_prob"]
     if "trust_coeff" in stress:
-        base_env.sp.risk_threshold_trust_coeff = stress["trust_coeff"]  # type: ignore[assignment]
+        base_env.sp.risk_threshold_trust_coeff = stress["trust_coeff"]
     if "valence_coeff" in stress:
-        base_env.sp.risk_threshold_valence_coeff = stress["valence_coeff"]  # type: ignore[assignment]
+        base_env.sp.risk_threshold_valence_coeff = stress["valence_coeff"]
+
+
+@contextmanager
+def _suppress_sb3_stdout() -> None:
+    """Temporarily silence SB3 Monitor/DummyVecEnv wrapper messages."""
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        yield
 
 
 def evaluate_checkpoint(
@@ -90,34 +101,40 @@ def evaluate_checkpoint(
     algo = detect_agent_type(path)
     stress_results: List[StressResult] = []
 
-    for persona in HOLDOUT_PROFILES:
-        for stress in STRESSORS:
-            env = make_eval_env(
-                observe_valence=observe_valence,
-                disable_clarify_alt=disable_clarify_alt,
-                holdout=False,
-                needs_masker=(algo == "maskable"),
-                blame_mode=blame_mode,
-            )
-            env.profiles = [persona]
-            apply_stressor(env, stress)
-            agent = load_checkpoint_agent(path, env, algo)
-            logs = rollout_agent(agent, env, episodes)
-            summary = summarise_logs(path.name, logs)
-            stress_results.append(StressResult(summary=summary, persona=persona.name, stressor=stress["name"]))
+    total = len(HOLDOUT_PROFILES) * len(STRESSORS)
+    with tqdm(total=total, desc=path.name, leave=False) as pbar:
+        for persona in HOLDOUT_PROFILES:
+            for stress in STRESSORS:
+                with _suppress_sb3_stdout():
+                    env = make_eval_env(
+                        observe_valence=observe_valence,
+                        disable_clarify_alt=disable_clarify_alt,
+                        holdout=False,
+                        needs_masker=(algo == "maskable"),
+                        blame_mode=blame_mode,
+                    )
+                    env.profiles = [persona]
+                    apply_stressor(env, stress)
+                    agent = load_checkpoint_agent(path, env, algo)
+
+                logs = rollout_agent(agent, env, episodes)
+                summary = summarise_logs(path.name, logs)
+                stress_results.append(
+                    StressResult(summary=summary, persona=persona.name, stressor=stress["name"])
+                )
+                pbar.update(1)
 
     summaries = [r.summary for r in stress_results]
     aggregate = aggregate_summaries(summaries)
     keys = [k for k in summaries[0].as_dict().keys() if k != "model"] if summaries else []
     mean_metrics = {k: float(np.mean([getattr(s, k) for s in summaries])) for k in keys}
 
-    # Print checkpoint-level mean-of-means (matching legacy script)
-    print(
-        f"{path.name:30s} f1={mean_metrics['f1']:.3f} "
-        f"refusals={mean_metrics['mean_refusals']:.3f} "
-        f"trust={mean_metrics['mean_trust']:.3f} "
-        f"unsafe={mean_metrics['unsafe_rate']:.3f}"
-    )
+    # print(
+    #     f"{path.name:30s} f1={mean_metrics['f1']:.3f} "
+    #     f"refusals={mean_metrics['mean_refusals']:.3f} "
+    #     f"trust={mean_metrics['mean_trust']:.3f} "
+    #     f"unsafe={mean_metrics['unsafe_rate']:.3f}"
+    # )
 
     return {
         "checkpoint": path.name,
