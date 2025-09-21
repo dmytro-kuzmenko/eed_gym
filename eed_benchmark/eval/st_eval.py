@@ -31,7 +31,7 @@ STRESSORS: Sequence[Dict[str, object]] = (
     {"name": "distrusting_user", "trust_coeff": -0.6},
     {"name": "forgiving_user", "trust_coeff": 0.6},
     {
-        "name": "combo_spicy",
+        "name": "adversarial_mix",
         "noise_std": 0.4,
         "safety_violation_prob": 0.8,
         "trust_coeff": -0.6,
