@@ -46,6 +46,10 @@ python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lagrangian --cost-limit
 ```
 Common flags include `--total-steps`, `--learning-rate`, `--no-observe-valence`, `--disable-clarify-alt`, `--no-trust-penalty`, etc.
 
+## Pretrained checkpoints
+RL baseline and ablation study pretrained checkpoints for the EED Gym environment can be found in an anonymized HuggingFace repository:
+- [https://huggingface.co/inq-android/eedgym-ckpts](https://huggingface.co/inq-android/eedgym-ckpts)
+
 ## Evaluation
 
 ### In-distribution (ID)

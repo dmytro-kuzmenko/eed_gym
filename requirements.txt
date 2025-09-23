@@ -1,4 +1,3 @@
-# Synced with pyproject.toml dependencies
 python>=3.12
 gymnasium>=1.1.1
 mkdocs>=1.6.1
