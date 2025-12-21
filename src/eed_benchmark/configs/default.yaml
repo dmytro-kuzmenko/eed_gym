@@ -1,0 +1,9 @@
+env:
+  observe_valence: true
+  trust_penalty: true
+  blame_mode: off
+
+training:
+  total_steps: 2_000_000
+  learning_rate: 3e-4
+  gamma: 0.99

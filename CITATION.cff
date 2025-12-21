@@ -1,9 +1,16 @@
-cff-version: 1.0.0
-message: "If you use EED-Gym, please cite the associated paper."
+cff-version: 1.2.0
 title: "When Robots Say No: The Empathic Ethical Disobedience Benchmark"
 authors:
-  - family-names: 
-    given-names: 
-keywords: [human-robot interaction, disobedience, reinforcement learning, trust, safety]
+  - family-names: Kuzmenko
+    given-names: Dmytro
+  - family-names: Shvai
+    given-names: Nadiya
+year: 2026
+version: "1.0.0"
+doi: 10.1145/nnnnnnn.nnnnnnn
+repository-code: https://github.com/dmytro-kuzmenko/eed_gym
+abstract: >
+  EED Gym is a benchmark for studying calibrated, empathic refusal
+  ("ethical disobedience") in human-robot interaction, with explicit
+  modeling of safety, trust, affect, and blame.
 license: MIT
-version: 0.1.0

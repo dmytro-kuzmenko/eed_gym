@@ -2,6 +2,8 @@
 
 A Gymnasium-compatible environment and training stack for studying calibrated, empathic refusal ("ethical disobedience") with explicit trust, affect, and safety dynamics. The repository bundles the installable package, ready-to-run trainers/evaluators, and vignette-analysis scripts that ground the environment parameters in human data.
 
+EED Gym is a controlled simulation benchmark and does not claim to be a high-fidelity model of human psychology or real-world HRI behavior.
+
 ![EED-Gym overview](media/eed_gym.png)
 
 ---
@@ -23,6 +25,8 @@ pip install -e .
 
 ### Requirements Snapshot
 A flat dependency list generated from `uv.lock` is available at `requirements.txt` if you need to reproduce the exact environment.
+
+Note: the `requirements.txt` snapshot is provided for reproducibility; ongoing development targets the versions specified in `pyproject.toml`.
 
 ## Quickstart
 ```bash
@@ -82,6 +86,8 @@ Blame modes:
   `SimParams`).
 - `always` forces the vignette-based model for every step.
 
+Default environment and training parameters are defined in `configs/default.yaml`.
+
 ## Vignette Study and Human Grounding
 
 ![Vignettes](media/vignettes.png)
@@ -91,6 +97,8 @@ To ground social dynamics in human judgments, EED Gym is parameterized using a v
 Participants rated each response along multiple social dimensions, including trust, perceived safety, empathy, blame, and appropriateness. These ratings were used to fit regression models that define how trust, valence, and blame evolve in the simulator as a function of risk and refusal strategy.
 
 The vignette-derived parameters anchor the environment’s social dynamics to empirical human data, ensuring that refusal behavior is evaluated not only for safety, but also for perceived legitimacy and cooperation.
+
+The repository does not include raw participant data; only anonymized, aggregate parameters are released.
 
 ## Utilities
 - `scripts/vignette_effects.py`: ANOVA, pairwise effect sizes, and power analysis for vignette outcomes
@@ -103,6 +111,8 @@ Tutorials cover install, quickstart, baseline training, evaluation, and extendin
 
 ## Citing EED Gym
 If you use EED Gym in your research, please cite the following paper:
+
+[![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
 
 ```
 @misc{kuzmenko2026eedgym,
