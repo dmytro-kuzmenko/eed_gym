@@ -2,6 +2,10 @@
 
 A Gymnasium-compatible environment and training stack for studying calibrated, empathic refusal ("ethical disobedience") with explicit trust, affect, and safety dynamics. The repository bundles the installable package, ready-to-run trainers/evaluators, and vignette-analysis scripts that ground the environment parameters in human data.
 
+![EED-Gym overview](media/eed_gym.png)
+
+---
+
 ## Environment Setup
 
 ### Recommended (`uv`)
@@ -78,13 +82,40 @@ Blame modes:
   `SimParams`).
 - `always` forces the vignette-based model for every step.
 
+## Vignette Study and Human Grounding
+
+![Vignettes](media/vignettes.png)
+
+To ground social dynamics in human judgments, EED Gym is parameterized using a vignette study based on short text scenarios describing unsafe or ambiguous human commands and alternative robot responses (compliance, empathic refusal, constructive refusal).
+
+Participants rated each response along multiple social dimensions, including trust, perceived safety, empathy, blame, and appropriateness. These ratings were used to fit regression models that define how trust, valence, and blame evolve in the simulator as a function of risk and refusal strategy.
+
+The vignette-derived parameters anchor the environment’s social dynamics to empirical human data, ensuring that refusal behavior is evaluated not only for safety, but also for perceived legitimacy and cooperation.
+
 ## Utilities
-- `scripts/derive_vignette_params.py`: fit blame/trust/vignette-gate parameters from the cleaned survey CSV
 - `scripts/vignette_effects.py`: ANOVA, pairwise effect sizes, and power analysis for vignette outcomes
 - `scripts/run_heuristic.py`: benchmark heuristic policies and optionally export episode-level stats
 
 ## Documentation
-MkDocs content lives under `docs/`; serve locally with `mkdocs serve`. Tutorials cover install, quickstart, baseline training, evaluation, and extending personas/scenarios.
+MkDocs content lives under `docs/`; serve locally with `mkdocs serve`. 
+
+Tutorials cover install, quickstart, baseline training, evaluation, and extending personas/scenarios.
+
+## Citing EED Gym
+If you use EED Gym in your research, please cite the following paper:
+
+```
+@misc{kuzmenko2026eedgym,
+  title        = {When Robots Say No: The Empathic Ethical Disobedience Benchmark},
+  author       = {Dmytro Kuzmenko and Nadiya Shvai},
+  year         = {2026},
+  eprint       = {arXiv:XXXX.XXXXX},
+  archivePrefix= {arXiv},
+  primaryClass = {cs.RO},
+  note         = {Accepted at the ACM/IEEE International Conference on Human-Robot Interaction (HRI 2026)},
+  doi          = {10.1145/nnnnnnn.nnnnnnn}
+}
+```
 
 ## License
 MIT — see `LICENSE`.
