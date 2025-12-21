@@ -13,7 +13,10 @@ from typing import Dict, List, Sequence
 import numpy as np
 from tqdm import tqdm
 
-from eed_benchmark.envs.empathic_disobedience_env import EmpathicDisobedienceEnv, HOLDOUT_PROFILES
+from eed_benchmark.envs.empathic_disobedience_env import (
+    EmpathicDisobedienceEnv,
+    HOLDOUT_PROFILES,
+)
 from eed_benchmark.eval.id_eval import (
     EvalSummary,
     aggregate_summaries,
@@ -120,13 +123,17 @@ def evaluate_checkpoint(
                 logs = rollout_agent(agent, env, episodes)
                 summary = summarise_logs(path.name, logs)
                 stress_results.append(
-                    StressResult(summary=summary, persona=persona.name, stressor=stress["name"])
+                    StressResult(
+                        summary=summary, persona=persona.name, stressor=stress["name"]
+                    )
                 )
                 pbar.update(1)
 
     summaries = [r.summary for r in stress_results]
     aggregate = aggregate_summaries(summaries)
-    keys = [k for k in summaries[0].as_dict().keys() if k != "model"] if summaries else []
+    keys = (
+        [k for k in summaries[0].as_dict().keys() if k != "model"] if summaries else []
+    )
     mean_metrics = {k: float(np.mean([getattr(s, k) for s in summaries])) for k in keys}
 
     # print(
@@ -147,9 +154,13 @@ def evaluate_checkpoint(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the stress-test CLI."""
 
-    parser = argparse.ArgumentParser(description="OOD stress-test evaluation on EED-Gym")
+    parser = argparse.ArgumentParser(
+        description="OOD stress-test evaluation on EED-Gym"
+    )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--weights", type=Path, help="Single checkpoint (.zip) to evaluate")
+    group.add_argument(
+        "--weights", type=Path, help="Single checkpoint (.zip) to evaluate"
+    )
     group.add_argument("--dir", type=Path, help="Directory of checkpoints to evaluate")
 
     parser.add_argument("--episodes", type=int, default=50)
@@ -161,7 +172,9 @@ def parse_args() -> argparse.Namespace:
         default="off",
         help="Which blame model to use in the evaluation env",
     )
-    parser.add_argument("--json-out", type=Path, help="Optional path to write JSON results")
+    parser.add_argument(
+        "--json-out", type=Path, help="Optional path to write JSON results"
+    )
     return parser.parse_args()
 
 
@@ -185,11 +198,18 @@ def main() -> None:
     else:
         raise ValueError("Provide either --weights or --dir")
 
-    grand: Dict[str, List[float]] = {"f1": [], "mean_refusals": [], "mean_trust": [], "unsafe_rate": []}
+    grand: Dict[str, List[float]] = {
+        "f1": [],
+        "mean_refusals": [],
+        "mean_trust": [],
+        "unsafe_rate": [],
+    }
     all_payloads = []
 
     for ckpt in checkpoints:
-        payload = evaluate_checkpoint(ckpt, args.episodes, observe_valence, disable_clarify_alt, args.blame_mode)
+        payload = evaluate_checkpoint(
+            ckpt, args.episodes, observe_valence, disable_clarify_alt, args.blame_mode
+        )
         all_payloads.append(payload)
         for key in grand:
             value = payload["mean_metrics"].get(key)

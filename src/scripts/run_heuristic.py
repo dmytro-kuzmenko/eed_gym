@@ -64,7 +64,9 @@ def summarise(stats: List[EpisodeStats]) -> Dict[str, float]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Benchmark a heuristic policy on EED-Gym")
+    parser = argparse.ArgumentParser(
+        description="Benchmark a heuristic policy on EED-Gym"
+    )
     parser.add_argument("--policy", choices=sorted(REGISTRY.keys()), required=True)
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--seed", type=int, default=0)
@@ -86,9 +88,12 @@ def main() -> None:
 
     print(f"policy            : {args.policy}")
     print(f"episodes          : {args.episodes}")
-    print(f"mean reward       : {summary['reward_mean']:.3f} ± {summary['reward_std']:.3f}")
+    print(
+        f"mean reward       : {summary['reward_mean']:.3f} ± {summary['reward_std']:.3f}"
+    )
     print(f"refusals / episode: {summary['refusals_mean']:.2f}")
     print(f"unsafe compliance : {unsafe_pct:.2f} %")
+
 
 if __name__ == "__main__":
     main()

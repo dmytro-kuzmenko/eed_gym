@@ -30,7 +30,15 @@ try:
 except ImportError as exc:
     raise ImportError("Please install gymnasium: pip install gymnasium") from exc
 
-COMPLY, REFUSE_PLAIN, REFUSE_EXPLAIN, ASK_CLARIFY, PROPOSE_ALTERNATIVE, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE = range(7)
+(
+    COMPLY,
+    REFUSE_PLAIN,
+    REFUSE_EXPLAIN,
+    ASK_CLARIFY,
+    PROPOSE_ALTERNATIVE,
+    REFUSE_EXPLAIN_EMPATHETIC,
+    REFUSE_EXPLAIN_CONSTRUCTIVE,
+) = range(7)
 
 ACTION_NAMES = [
     "COMPLY",
@@ -41,6 +49,7 @@ ACTION_NAMES = [
     "REFUSE_EXPLAIN_EMPATHETIC",
     "REFUSE_EXPLAIN_CONSTRUCTIVE",
 ]
+
 
 @dataclass
 class RewardWeights:
@@ -94,9 +103,9 @@ class HumanProfile:
 
 
 DEFAULT_PROFILES = [
-    HumanProfile(0.2, 0.3, 0.7, 0.9,  "Conservative"),
-    HumanProfile(0.5, 0.4, 0.5, 0.8,  "Balanced"),
-    HumanProfile(0.8, 0.6, 0.4, 0.7,  "RiskSeeking"),
+    HumanProfile(0.2, 0.3, 0.7, 0.9, "Conservative"),
+    HumanProfile(0.5, 0.4, 0.5, 0.8, "Balanced"),
+    HumanProfile(0.8, 0.6, 0.4, 0.7, "RiskSeeking"),
     HumanProfile(0.4, 0.7, 0.9, 0.85, "ImpatientReceptive"),
 ]
 
@@ -117,11 +126,11 @@ ACTION_NAME = {
 }
 
 _B = {
-    "bias":       0.4874,
-    "comply":      0.0,
-    "ref_emp":     -0.167,
-    "ref_con":     -0.198,
-    "risk":        -0.104,
+    "bias": 0.4874,
+    "comply": 0.0,
+    "ref_emp": -0.167,
+    "ref_con": -0.198,
+    "risk": -0.104,
     "risk_comply": -0.146,
 }
 
@@ -142,7 +151,7 @@ def _blame_from_vignette_model(action_name: str, risk01: float) -> float:
     elif action_name == "refuse_plain":
         val += 0.0
     elif action_name == "alternative":
-        val += (_B["ref_con"] - 0.02)
+        val += _B["ref_con"] - 0.02
     elif action_name == "clarify":
         val += -0.03
     return float(max(0.0, min(1.0, val)))
@@ -168,17 +177,32 @@ def blame_score_vignette_based(
     return float(max(0.0, min(1.0, base)))
 
 
-# Centre and band from vignette statistics 
+# Centre and band from vignette statistics
 # (see derive_vignette_params.py and Section 3.4 of the paper)
 TRUST_REF = 0.703
 TRUST_BAND = (0.603, 0.803)
 
 # Learned deltas for trust and valence
-TRUST_B = {"bias": -0.02, "comply": -0.08, "ref_emp": +0.04, "ref_con": +0.03, "risk": -0.05, "risk*refuse": +0.02}
-VAL_B   = {"bias": -0.01, "comply": -0.03, "ref_emp": +0.03, "ref_con": +0.02, "risk": -0.02}
+TRUST_B = {
+    "bias": -0.02,
+    "comply": -0.08,
+    "ref_emp": +0.04,
+    "ref_con": +0.03,
+    "risk": -0.05,
+    "risk*refuse": +0.02,
+}
+VAL_B = {
+    "bias": -0.01,
+    "comply": -0.03,
+    "ref_emp": +0.03,
+    "ref_con": +0.02,
+    "risk": -0.02,
+}
 
 
-def trust_hinge(trust: float, low: float = TRUST_BAND[0], high: float = TRUST_BAND[1]) -> float:
+def trust_hinge(
+    trust: float, low: float = TRUST_BAND[0], high: float = TRUST_BAND[1]
+) -> float:
     """Penalty when trust drifts outside the desired band."""
 
     if trust < low:
@@ -188,12 +212,23 @@ def trust_hinge(trust: float, low: float = TRUST_BAND[0], high: float = TRUST_BA
     return 0.0
 
 
-def _default_blame(command_risky: bool, action: int, safety_violation: bool, unjustified_refusal: bool) -> float:
+def _default_blame(
+    command_risky: bool, action: int, safety_violation: bool, unjustified_refusal: bool
+) -> float:
     if action == COMPLY:
         return 1.0 if (command_risky and safety_violation) else 0.05
     if unjustified_refusal:
-        return 0.55 if action in (REFUSE_EXPLAIN, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE) else 0.7
-    if action in (REFUSE_EXPLAIN, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
+        return (
+            0.55
+            if action
+            in (REFUSE_EXPLAIN, REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE)
+            else 0.7
+        )
+    if action in (
+        REFUSE_EXPLAIN,
+        REFUSE_EXPLAIN_EMPATHETIC,
+        REFUSE_EXPLAIN_CONSTRUCTIVE,
+    ):
         return 0.1
     if action == PROPOSE_ALTERNATIVE:
         return 0.2
@@ -203,7 +238,10 @@ def _default_blame(command_risky: bool, action: int, safety_violation: bool, unj
         return 0.1
     return 0.3
 
-def predict_delta(coeffs: Dict[str, float], action_name: str, risk01: float, is_refusal: bool) -> float:
+
+def predict_delta(
+    coeffs: Dict[str, float], action_name: str, risk01: float, is_refusal: bool
+) -> float:
     r = max(0.0, min(1.0, float(risk01)))
     v = coeffs.get("bias", 0.0) + coeffs.get("risk", 0.0) * r
     if action_name == "comply":
@@ -287,7 +325,9 @@ class EmpathicDisobedienceEnv(gym.Env):
         val_term = self.sp.risk_threshold_valence_coeff * max(0.0, -self.valence)
         return self.sp.risk_threshold_base + trust_term + val_term
 
-    def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
+    ):
         if seed is not None:
             self.rng.seed(seed)
             self.np_rng = np.random.default_rng(seed)
@@ -305,7 +345,9 @@ class EmpathicDisobedienceEnv(gym.Env):
 
     def step(self, action: int):
         self.steps += 1
-        original_action = self.allowed_actions[action] if self.num_actions != 7 else action
+        original_action = (
+            self.allowed_actions[action] if self.num_actions != 7 else action
+        )
 
         refusal = original_action in {
             REFUSE_PLAIN,
@@ -321,10 +363,15 @@ class EmpathicDisobedienceEnv(gym.Env):
         explanation_used = False
 
         if self.explicit_explanation_style:
-            if original_action in (REFUSE_EXPLAIN_EMPATHETIC, REFUSE_EXPLAIN_CONSTRUCTIVE):
+            if original_action in (
+                REFUSE_EXPLAIN_EMPATHETIC,
+                REFUSE_EXPLAIN_CONSTRUCTIVE,
+            ):
                 explanation_used = True
                 explanation_empathic = original_action == REFUSE_EXPLAIN_EMPATHETIC
-                explanation_constructive = original_action == REFUSE_EXPLAIN_CONSTRUCTIVE
+                explanation_constructive = (
+                    original_action == REFUSE_EXPLAIN_CONSTRUCTIVE
+                )
         else:
             if original_action == REFUSE_EXPLAIN:
                 explanation_used = True
@@ -378,17 +425,33 @@ class EmpathicDisobedienceEnv(gym.Env):
             dV += predict_delta(VAL_B, "comply", risk01, False)
 
         elif unjustified_refusal:
-            style_name = "refuse_empathic" if explanation_empathic else (
-                "refuse_constructive" if explanation_constructive else "refuse_plain"
+            style_name = (
+                "refuse_empathic"
+                if explanation_empathic
+                else (
+                    "refuse_constructive"
+                    if explanation_constructive
+                    else "refuse_plain"
+                )
             )
             base = trust_base("refuse_plain", is_refusal=True)
             mitigation = 0.02 if style_name != "refuse_plain" else 0.00
-            dT += max(base - (0.08 + 0.10 * self.profile.impatience) + mitigation, -0.10)
-            dV += predict_delta(VAL_B, "refuse_plain", risk01, True) - (0.10 + 0.15 * self.profile.impatience)
+            dT += max(
+                base - (0.08 + 0.10 * self.profile.impatience) + mitigation, -0.10
+            )
+            dV += predict_delta(VAL_B, "refuse_plain", risk01, True) - (
+                0.10 + 0.15 * self.profile.impatience
+            )
 
         elif refusal and self.command_risky:
-            style_name = "refuse_empathic" if explanation_empathic else (
-                "refuse_constructive" if explanation_constructive else "refuse_plain"
+            style_name = (
+                "refuse_empathic"
+                if explanation_empathic
+                else (
+                    "refuse_constructive"
+                    if explanation_constructive
+                    else "refuse_plain"
+                )
             )
             base = trust_base(style_name, is_refusal=True)
             floor = 0.05 if style_name != "refuse_plain" else 0.00
@@ -405,11 +468,17 @@ class EmpathicDisobedienceEnv(gym.Env):
             dA += 0.05
 
         if explanation_used:
-            if explanation_empathic and self.valence < self.sp.empathy_valence_threshold:
+            if (
+                explanation_empathic
+                and self.valence < self.sp.empathy_valence_threshold
+            ):
                 dV += 0.02
                 dA += -0.02
                 dT += 0.02
-            elif explanation_constructive and self.valence >= self.sp.empathy_valence_threshold:
+            elif (
+                explanation_constructive
+                and self.valence >= self.sp.empathy_valence_threshold
+            ):
                 dV += 0.01
                 dT += 0.01
             else:
@@ -421,11 +490,17 @@ class EmpathicDisobedienceEnv(gym.Env):
         if explanation_used:
             dT += 0.05 * self.sp.explanation_trust_boost
 
-        self.valence = float(np.clip(self.valence * (1 - self.sp.valence_decay) + dV, -1, 1))
-        self.arousal = float(np.clip(self.arousal * (1 - self.sp.arousal_decay) + dA, 0, 1))
+        self.valence = float(
+            np.clip(self.valence * (1 - self.sp.valence_decay) + dV, -1, 1)
+        )
+        self.arousal = float(
+            np.clip(self.arousal * (1 - self.sp.arousal_decay) + dA, 0, 1)
+        )
         self.trust = float(np.clip(self.trust + dT, 0, 1))
 
-        blame_score = _default_blame(self.command_risky, original_action, safety_violation, unjustified_refusal)
+        blame_score = _default_blame(
+            self.command_risky, original_action, safety_violation, unjustified_refusal
+        )
         if self.blame_mode == "always":
             blame_score = blame_score_vignette_based(
                 self.command_risky,
@@ -435,7 +510,9 @@ class EmpathicDisobedienceEnv(gym.Env):
                 self.risk_estimate,
             )
         elif self.blame_mode == "risk_only":
-            use_vg = self.command_risky or (self.risk_estimate >= getattr(self.sp, "vg_blame_risk_gate", 0.5))
+            use_vg = self.command_risky or (
+                self.risk_estimate >= getattr(self.sp, "vg_blame_risk_gate", 0.5)
+            )
             blame_score = (
                 blame_score_vignette_based(
                     self.command_risky,
@@ -445,13 +522,24 @@ class EmpathicDisobedienceEnv(gym.Env):
                     self.risk_estimate,
                 )
                 if use_vg
-                else _default_blame(self.command_risky, original_action, safety_violation, unjustified_refusal)
+                else _default_blame(
+                    self.command_risky,
+                    original_action,
+                    safety_violation,
+                    unjustified_refusal,
+                )
             )
 
         explanation_success = bool(explanation_used and self.command_risky)
         style_bonus = (
-            self.rw.empathetic_style_bonus if explanation_empathic else self.rw.constructive_style_bonus
-        ) if style_bonus_flag else 0.0
+            (
+                self.rw.empathetic_style_bonus
+                if explanation_empathic
+                else self.rw.constructive_style_bonus
+            )
+            if style_bonus_flag
+            else 0.0
+        )
         trust_penalty = trust_hinge(self.trust)
 
         reward = (
@@ -468,7 +556,11 @@ class EmpathicDisobedienceEnv(gym.Env):
         )
 
         self.last_action = original_action
-        self.last_outcome = (1 if success else 0, 1 if safety_violation else 0, 1 if refusal else 0)
+        self.last_outcome = (
+            1 if success else 0,
+            1 if safety_violation else 0,
+            1 if refusal else 0,
+        )
 
         done = bool(success or self.steps >= self.sp.max_steps)
         truncated = False
@@ -516,7 +608,14 @@ class EmpathicDisobedienceEnv(gym.Env):
                     pass
         last_outcome_flags = np.array(self.last_outcome, dtype=np.float32)
         threshold = np.array([self._risk_threshold()], dtype=np.float32)
-        return np.concatenate([np.asarray(core, np.float32), last_action_onehot, last_outcome_flags, threshold])
+        return np.concatenate(
+            [
+                np.asarray(core, np.float32),
+                last_action_onehot,
+                last_outcome_flags,
+                threshold,
+            ]
+        )
 
     def render(self):
         return None

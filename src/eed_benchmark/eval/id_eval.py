@@ -36,7 +36,7 @@ from eed_benchmark.eval.metrics import (
 try:
     from sb3_contrib.common.wrappers import ActionMasker
     from sb3_contrib.ppo_mask import MaskablePPO
-except Exception:  
+except Exception:
     ActionMasker = None
     MaskablePPO = None
 
@@ -44,12 +44,12 @@ from stable_baselines3 import PPO
 
 try:
     from sb3_contrib import RecurrentPPO
-except Exception:  
+except Exception:
     RecurrentPPO = None
 
 try:
     from eed_benchmark.rl.trainers.ppo_lag import PPOLag
-except Exception:  
+except Exception:
     PPOLag = None
 
 
@@ -117,7 +117,9 @@ def _ensure_int_action(action) -> int:
 def _valid_action_mask(env: EmpathicDisobedienceEnv) -> np.ndarray:
     """Return a boolean mask of valid actions for maskable PPO."""
 
-    if hasattr(env, "valid_action_mask") and callable(getattr(env, "valid_action_mask")):
+    if hasattr(env, "valid_action_mask") and callable(
+        getattr(env, "valid_action_mask")
+    ):
         return env.valid_action_mask()
     return np.ones(env.action_space.n, dtype=bool)
 
@@ -164,7 +166,9 @@ def make_eval_env(
             env.profiles = [profiles[0]]
     if needs_masker:
         if ActionMasker is None:
-            raise RuntimeError("MaskablePPO requested but sb3-contrib is not installed.")
+            raise RuntimeError(
+                "MaskablePPO requested but sb3-contrib is not installed."
+            )
         env = ActionMasker(env, _valid_action_mask)
     return env
 
@@ -205,7 +209,9 @@ def rollout_episode(env, agent) -> EpisodeLog:
     base_env = getattr(env, "unwrapped", env)
 
     while not done:
-        action, state = agent.predict(obs, state=state, episode_start=episode_start, deterministic=True)
+        action, state = agent.predict(
+            obs, state=state, episode_start=episode_start, deterministic=True
+        )
         act = _ensure_int_action(action)
         obs, r, terminated, truncated, info = env.step(act)
         done = bool(terminated or truncated)
@@ -227,7 +233,11 @@ def rollout_episode(env, agent) -> EpisodeLog:
 
         trust_samples.append(float(getattr(base_env, "trust", np.nan)))
 
-    trust_mean = float(np.nanmean(trust_samples)) if trust_samples else float(getattr(base_env, "trust", np.nan))
+    trust_mean = (
+        float(np.nanmean(trust_samples))
+        if trust_samples
+        else float(getattr(base_env, "trust", np.nan))
+    )
     return EpisodeLog(
         reward=reward,
         refusals=refusals,
@@ -270,7 +280,12 @@ def _bin_stats(y_true: np.ndarray, y_pred: np.ndarray, y_score: np.ndarray):
         pred_rates.append(pred_rate)
         true_rates.append(true_rate)
 
-    return centres, np.array(pred_rates, dtype=float), np.array(true_rates, dtype=float), probs
+    return (
+        centres,
+        np.array(pred_rates, dtype=float),
+        np.array(true_rates, dtype=float),
+        probs,
+    )
 
 
 def summarise_logs(model: str, logs: Sequence[EpisodeLog]) -> EvalSummary:
@@ -336,13 +351,18 @@ def summarise_logs(model: str, logs: Sequence[EpisodeLog]) -> EvalSummary:
     )
 
 
-def aggregate_summaries(summaries: Sequence[EvalSummary]) -> Dict[str, Dict[str, float]]:
+def aggregate_summaries(
+    summaries: Sequence[EvalSummary],
+) -> Dict[str, Dict[str, float]]:
     """Compute mean, std, and 95% CI for each metric across summaries."""
 
     if not summaries:
         return {}
     keys = [field for field in summaries[0].as_dict().keys() if field != "model"]
-    values = {key: np.asarray([getattr(summary, key) for summary in summaries], dtype=float) for key in keys}
+    values = {
+        key: np.asarray([getattr(summary, key) for summary in summaries], dtype=float)
+        for key in keys
+    }
     n = len(summaries)
     out: Dict[str, Dict[str, float]] = {}
     for key, arr in values.items():
@@ -381,7 +401,13 @@ def evaluate_checkpoint(
     """Load and evaluate a checkpoint, returning a summary of metrics."""
 
     kind = detect_agent_type(weights_path)
-    env = make_eval_env(observe_valence, disable_clarify_alt, holdout, needs_masker=(kind == "maskable"), blame_mode=blame_mode)
+    env = make_eval_env(
+        observe_valence,
+        disable_clarify_alt,
+        holdout,
+        needs_masker=(kind == "maskable"),
+        blame_mode=blame_mode,
+    )
     agent = load_checkpoint_agent(weights_path, env, kind)
     summary = evaluate_policy(agent, env, episodes)
     summary.model = weights_path.name
@@ -404,14 +430,18 @@ def evaluate_directory(
         raise ValueError(f"No checkpoints found under {dir_path}")
 
     summaries = [
-        evaluate_checkpoint(ckpt, episodes, observe_valence, disable_clarify_alt, holdout, blame_mode)
+        evaluate_checkpoint(
+            ckpt, episodes, observe_valence, disable_clarify_alt, holdout, blame_mode
+        )
         for ckpt in checkpoints
     ]
 
     aggregate = aggregate_summaries(summaries)
     print("\n--- aggregated metrics (mean ± std, 95% CI half-width) ---")
     for metric, stats in aggregate.items():
-        print(f"{metric:20s}: {stats['mean']:.3f} ± {stats['std']:.3f} (±{stats['ci95']:.3f})")
+        print(
+            f"{metric:20s}: {stats['mean']:.3f} ± {stats['std']:.3f} (±{stats['ci95']:.3f})"
+        )
     return aggregate
 
 
@@ -424,11 +454,15 @@ def evaluate_policy_name(
 ) -> EvalSummary:
     """Evaluate a built-in heuristic policy against the benchmark env."""
 
-    env = make_eval_env(observe_valence, disable_clarify_alt, holdout, needs_masker=False)
+    env = make_eval_env(
+        observe_valence, disable_clarify_alt, holdout, needs_masker=False
+    )
     from eed_benchmark.heuristics.policies import REGISTRY
 
     if policy_name not in REGISTRY:
-        raise ValueError(f"Unknown heuristic policy '{policy_name}'. Available: {list(REGISTRY.keys())}")
+        raise ValueError(
+            f"Unknown heuristic policy '{policy_name}'. Available: {list(REGISTRY.keys())}"
+        )
 
     fn = REGISTRY[policy_name]
 
@@ -453,7 +487,7 @@ def _seed_everything(seed: Optional[int]) -> None:
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
-    except Exception:  
+    except Exception:
         pass
     np.random.seed(seed)
 
@@ -483,7 +517,9 @@ def evaluate_policy_multi(
     for idx in range(runs):
         seed = None if seed_base is None else seed_base + idx
         _seed_everything(seed)
-        summary = evaluate_policy_name(policy, episodes, observe_valence, disable_clarify_alt, holdout)
+        summary = evaluate_policy_name(
+            policy, episodes, observe_valence, disable_clarify_alt, holdout
+        )
         per_run.append(summary.as_dict())
 
     keys = [key for key, _ in _numeric_items(per_run[0])]
@@ -509,7 +545,9 @@ def evaluate_policy_multi(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the CLI entry point."""
 
-    parser = argparse.ArgumentParser(description="In-distribution evaluation for EED-Gym")
+    parser = argparse.ArgumentParser(
+        description="In-distribution evaluation for EED-Gym"
+    )
     parser.add_argument("--config", help="Optional YAML with evaluation settings")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--observe-valence", action="store_true")
@@ -517,8 +555,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-clarify-alt", action="store_true")
     parser.add_argument("--weights", type=str, help="Path to an SB3 model (.zip)")
     parser.add_argument("--dir", type=str, help="Directory of checkpoints (.zip)")
-    parser.add_argument("--policy", choices=["always_comply", "refuse_risky", "threshold", "vignette_gate"])
-    parser.add_argument("--blame-mode", choices=["off", "risk_only", "always"], default="off")
+    parser.add_argument(
+        "--policy",
+        choices=["always_comply", "refuse_risky", "threshold", "vignette_gate"],
+    )
+    parser.add_argument(
+        "--blame-mode", choices=["off", "risk_only", "always"], default="off"
+    )
     parser.add_argument("--json-out", type=Path, help="Optional path for JSON output")
     return parser.parse_args()
 
@@ -536,7 +579,9 @@ def main() -> None:
     holdout = bool(cfg.get("holdout", args.holdout))
 
     if args.policy:
-        summary = evaluate_policy_name(args.policy, episodes, observe_valence, disable_clarify_alt, holdout)
+        summary = evaluate_policy_name(
+            args.policy, episodes, observe_valence, disable_clarify_alt, holdout
+        )
         if args.json_out:
             args.json_out.write_text(json.dumps(summary.as_dict(), indent=2))
             print(f"saved summary to {args.json_out}")

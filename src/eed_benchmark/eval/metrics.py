@@ -87,7 +87,9 @@ def brier_score_prob(y_true: np.ndarray, y_prob: np.ndarray) -> float:
     return float(np.mean((y_prob - y_true) ** 2))
 
 
-def brier_score_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 10) -> float:
+def brier_score_binned(
+    y_true: np.ndarray, y_score: np.ndarray, bins: int = 10
+) -> float:
     """Brier score using empirical bin means as probability estimates."""
 
     y_true = np.asarray(y_true, dtype=int)
@@ -107,7 +109,9 @@ def brier_score_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 10) 
     return brier_score_prob(y_true, y_prob)
 
 
-def calibration_ece_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 10) -> float:
+def calibration_ece_binned(
+    y_true: np.ndarray, y_score: np.ndarray, bins: int = 10
+) -> float:
     """Expected Calibration Error from raw samples via equal-width bins."""
 
     y_true = np.asarray(y_true, dtype=int)
@@ -133,7 +137,9 @@ def calibration_ece_binned(y_true: np.ndarray, y_score: np.ndarray, bins: int = 
     return float(ece)
 
 
-def ece_from_bin_rates(bin_counts: np.ndarray, pred_rates: np.ndarray, true_rates: np.ndarray) -> float:
+def ece_from_bin_rates(
+    bin_counts: np.ndarray, pred_rates: np.ndarray, true_rates: np.ndarray
+) -> float:
     """Expected Calibration Error given pre-computed bin statistics."""
 
     bin_counts = np.asarray(bin_counts, dtype=float)

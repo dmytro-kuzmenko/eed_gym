@@ -12,6 +12,7 @@ Train a recurrent baseline and write checkpoints under ``artifacts/runs/``:
 Train the maskable variant with fewer total steps:
     python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked --total-steps 200000
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,7 +25,11 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecEnvWrapper
 
-from eed_benchmark.envs.empathic_disobedience_env import EmpathicDisobedienceEnv, RewardWeights, SimParams
+from eed_benchmark.envs.empathic_disobedience_env import (
+    EmpathicDisobedienceEnv,
+    RewardWeights,
+    SimParams,
+)
 
 try:
     from sb3_contrib import RecurrentPPO
@@ -104,7 +109,9 @@ class EvalCallback(BaseCallback):
     def _on_step(self) -> bool:
         total_steps = self.num_timesteps
         if self.curriculum:
-            schedule_reward_weights(self.rw, total_steps / max(1, self.model._total_timesteps))
+            schedule_reward_weights(
+                self.rw, total_steps / max(1, self.model._total_timesteps)
+            )
         if total_steps - self.last_eval >= self.eval_interval:
             self.last_eval = total_steps
             self._eval_once()
@@ -159,7 +166,9 @@ class EvalCallback(BaseCallback):
                     safety.append(1)
                 if refused:
                     refusals.append(1)
-                    if info.get("command_risky", False) and not info.get("unjustified_refusal", False):
+                    if info.get("command_risky", False) and not info.get(
+                        "unjustified_refusal", False
+                    ):
                         justified.append(1)
 
                 if info.get("command_risky", False):
@@ -193,18 +202,34 @@ class EvalCallback(BaseCallback):
         fn = int(((should == 1) & (pred == 0)).sum())
         precision = tp / (tp + fp) if (tp + fp) else 0.0
         recall = tp / (tp + fn) if (tp + fn) else 0.0
-        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if (precision + recall)
+            else 0.0
+        )
 
         metrics = {
             "eval/mean_reward": float(np.mean(rewards)) if rewards else 0.0,
-            "eval/mean_valence": float(np.mean(valence_means)) if valence_means else 0.0,
+            "eval/mean_valence": float(np.mean(valence_means))
+            if valence_means
+            else 0.0,
             "eval/mean_trust": float(np.mean(trust_means)) if trust_means else 0.0,
-            "eval/mean_arousal": float(np.mean(arousal_means)) if arousal_means else 0.0,
-            "eval/safety_viols_per_ep": float(np.sum(safety) / max(1, self.eval_episodes)),
-            "eval/refusals_per_ep": float(np.sum(refusals) / max(1, self.eval_episodes)),
-            "eval/justified_ratio": float((np.sum(justified) / max(1, np.sum(refusals))) if refusals else 0.0),
+            "eval/mean_arousal": float(np.mean(arousal_means))
+            if arousal_means
+            else 0.0,
+            "eval/safety_viols_per_ep": float(
+                np.sum(safety) / max(1, self.eval_episodes)
+            ),
+            "eval/refusals_per_ep": float(
+                np.sum(refusals) / max(1, self.eval_episodes)
+            ),
+            "eval/justified_ratio": float(
+                (np.sum(justified) / max(1, np.sum(refusals))) if refusals else 0.0
+            ),
             "eval/calibration_spearman": rho,
-            "eval/avg_threshold": float(np.mean(threshold_all)) if threshold_all else 0.0,
+            "eval/avg_threshold": float(np.mean(threshold_all))
+            if threshold_all
+            else 0.0,
             "eval/avg_risk_estimate": float(np.mean(risk_all)) if risk_all else 0.0,
             "eval/refusal_f1": float(f1),
             "eval/risky_commands": int(risky_total),
@@ -267,14 +292,18 @@ def get_algorithm_class(algo: str):
 def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Train PPO-family baselines on EED-Gym")
     ap.add_argument("--algo", choices=sorted(ALGO_CHOICES), default="ppo")
-    ap.add_argument("--policy", help="Override policy class (default inferred from algo)")
+    ap.add_argument(
+        "--policy", help="Override policy class (default inferred from algo)"
+    )
     ap.add_argument("--total-steps", type=int, default=600_000)
     ap.add_argument("--eval-interval", type=int, default=20_000)
     ap.add_argument("--eval-episodes", type=int, default=20)
     ap.add_argument("--seeds", type=int, nargs="+", default=[0])
     ap.add_argument("--out-dir", default="artifacts/runs")
     ap.add_argument("--name", help="Run name prefix (defaults to algo name)")
-    ap.add_argument("--n-steps", type=int, help="Rollout horizon per update (defaults vary by algo)")
+    ap.add_argument(
+        "--n-steps", type=int, help="Rollout horizon per update (defaults vary by algo)"
+    )
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--learning-rate", type=float, default=3e-4)
     ap.add_argument("--gamma", type=float, default=0.99)
@@ -282,13 +311,25 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--clip-range", type=float, default=0.2)
     ap.add_argument("--ent-coef", type=float, default=0.1)
     ap.add_argument("--vf-coef", type=float, default=0.5)
-    ap.add_argument("--no-curriculum", action="store_true", help="Disable reward-weight curriculum schedule")
+    ap.add_argument(
+        "--no-curriculum",
+        action="store_true",
+        help="Disable reward-weight curriculum schedule",
+    )
     ap.add_argument("--no-observe-valence", action="store_true")
     ap.add_argument("--disable-clarify-alt", action="store_true")
     ap.add_argument("--no-explicit-style", action="store_true")
-    ap.add_argument("--no-trust-penalty", action="store_true", help="Zero out trust deviation penalty in rewards")
-    ap.add_argument("--cost-limit", type=float, default=0.25, help="Only used for ppo_lagrangian")
-    ap.add_argument("--penalty-lr", type=float, default=0.02, help="Only used for ppo_lagrangian")
+    ap.add_argument(
+        "--no-trust-penalty",
+        action="store_true",
+        help="Zero out trust deviation penalty in rewards",
+    )
+    ap.add_argument(
+        "--cost-limit", type=float, default=0.25, help="Only used for ppo_lagrangian"
+    )
+    ap.add_argument(
+        "--penalty-lr", type=float, default=0.02, help="Only used for ppo_lagrangian"
+    )
     return ap.parse_args()
 
 

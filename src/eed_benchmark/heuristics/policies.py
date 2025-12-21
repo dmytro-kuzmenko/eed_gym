@@ -49,7 +49,9 @@ class VignetteGateParams:
             return 0.0
         return max(-4.0, min(4.0, (r7 - self.risk_mean) / self.risk_std))
 
-    def style_acceptability(self, risk_estimate: float, style_offset: float, bias: float = 0.0) -> float:
+    def style_acceptability(
+        self, risk_estimate: float, style_offset: float, bias: float = 0.0
+    ) -> float:
         logits = (
             self.intercept
             + self.risk_coef * self.risk_z(risk_estimate)
@@ -98,7 +100,9 @@ def vignette_gate(env: EnvProtocol, obs: Observation) -> int:
     con_bias = bias if valence >= env.sp.empathy_valence_threshold else 0.0
 
     p_emp = VG_PARAMS.style_acceptability(risk_est, VG_PARAMS.empathic_coef, emp_bias)
-    p_con = VG_PARAMS.style_acceptability(risk_est, VG_PARAMS.constructive_coef, con_bias)
+    p_con = VG_PARAMS.style_acceptability(
+        risk_est, VG_PARAMS.constructive_coef, con_bias
+    )
     return REFUSE_EXPLAIN_EMPATHETIC if p_emp > p_con else REFUSE_EXPLAIN_CONSTRUCTIVE
 
 

@@ -129,10 +129,16 @@ def pairwise_effects(
                     pd.DataFrame({"grp": "B", "val": y}),
                 ]
             )
-            ci_low, ci_high = bootstrap_bca(samples, lambda df_xy: hedges_g(
-                df_xy.loc[df_xy["grp"] == "A", "val"].to_numpy(),
-                df_xy.loc[df_xy["grp"] == "B", "val"].to_numpy(),
-            ), alpha=alpha, n_boot=n_boot, seed=seed)
+            ci_low, ci_high = bootstrap_bca(
+                samples,
+                lambda df_xy: hedges_g(
+                    df_xy.loc[df_xy["grp"] == "A", "val"].to_numpy(),
+                    df_xy.loc[df_xy["grp"] == "B", "val"].to_numpy(),
+                ),
+                alpha=alpha,
+                n_boot=n_boot,
+                seed=seed,
+            )
 
             t_stat, p_val = stats.ttest_ind(x, y, equal_var=False, nan_policy="omit")
             power = float(
@@ -173,7 +179,9 @@ def run_anova(df: pd.DataFrame, dv: str, between: str) -> Dict[str, object]:
     ss_total = ss_between + table.loc["Residual", "sum_sq"]
     eta_sq = float(ss_between / ss_total) if ss_total > 0 else float("nan")
     return {
-        "anova": table.reset_index().rename(columns={"index": "term"}).to_dict(orient="records"),
+        "anova": table.reset_index()
+        .rename(columns={"index": "term"})
+        .to_dict(orient="records"),
         "eta_squared": eta_sq,
     }
 
@@ -211,23 +219,41 @@ def maybe_melt_wide(
 def load_data(args: argparse.Namespace) -> pd.DataFrame:
     df = pd.read_csv(args.csv)
     if args.wide_dv_regex:
-        df = maybe_melt_wide(df, args.dv, args.id, args.wide_dv_regex, args.wide_cond_map)
+        df = maybe_melt_wide(
+            df, args.dv, args.id, args.wide_dv_regex, args.wide_cond_map
+        )
     return df
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Compute vignette ANOVA and pairwise effect sizes")
+    parser = argparse.ArgumentParser(
+        description="Compute vignette ANOVA and pairwise effect sizes"
+    )
     parser.add_argument("--csv", required=True, help="Path to vignette CSV")
-    parser.add_argument("--dv", required=True, help="Dependent variable column (e.g., trust)")
-    parser.add_argument("--between", default=DEFAULT_BETWEEN, help="Between-subject factor column")
+    parser.add_argument(
+        "--dv", required=True, help="Dependent variable column (e.g., trust)"
+    )
+    parser.add_argument(
+        "--between", default=DEFAULT_BETWEEN, help="Between-subject factor column"
+    )
     parser.add_argument("--id", default=DEFAULT_ID, help="Participant ID column")
     parser.add_argument("--alpha", type=float, default=0.05)
-    parser.add_argument("--nboot", type=int, default=20_000, help="Number of bootstrap samples for CIs")
+    parser.add_argument(
+        "--nboot", type=int, default=20_000, help="Number of bootstrap samples for CIs"
+    )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--export", type=Path, help="Optional path to export pairwise CSV")
+    parser.add_argument(
+        "--export", type=Path, help="Optional path to export pairwise CSV"
+    )
     parser.add_argument("--json-out", type=Path, help="Optional JSON output path")
-    parser.add_argument("--wide-dv-regex", default="", help="Regex to melt wide-format columns")
-    parser.add_argument("--wide-cond-map", default="", help="Mapping for wide columns, e.g. 'trust_emp:Empathic'")
+    parser.add_argument(
+        "--wide-dv-regex", default="", help="Regex to melt wide-format columns"
+    )
+    parser.add_argument(
+        "--wide-cond-map",
+        default="",
+        help="Mapping for wide columns, e.g. 'trust_emp:Empathic'",
+    )
     return parser.parse_args()
 
 
@@ -236,7 +262,9 @@ def main() -> None:
     df = load_data(args)
 
     anova = run_anova(df, args.dv, args.between)
-    effects = pairwise_effects(df, args.dv, args.between, args.alpha, args.nboot, args.seed)
+    effects = pairwise_effects(
+        df, args.dv, args.between, args.alpha, args.nboot, args.seed
+    )
 
     if args.export:
         out_df = pd.DataFrame([effect.as_dict() for effect in effects])

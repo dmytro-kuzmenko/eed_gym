@@ -25,7 +25,9 @@ class PPOLag(PPO):
         infos = getattr(self.rollout_buffer, "infos", None)
         if infos is None or len(infos) == 0:
             return th.zeros(self.rollout_buffer.buffer_size, device=self.device)
-        costs = th.tensor([float(info.get("cost", 0.0)) for info in infos], device=self.device)
+        costs = th.tensor(
+            [float(info.get("cost", 0.0)) for info in infos], device=self.device
+        )
         adv = costs - costs.mean()
         std = adv.std()
         if std > 1e-8:
@@ -49,7 +51,9 @@ class PPOLag(PPO):
                 ratio = th.exp(log_prob - rollout_data.old_log_prob)
 
                 pg_losses1 = -rollout_data.advantages * ratio
-                pg_losses2 = -rollout_data.advantages * th.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range)
+                pg_losses2 = -rollout_data.advantages * th.clamp(
+                    ratio, 1 - self.clip_range, 1 + self.clip_range
+                )
                 pg_loss = th.max(pg_losses1, pg_losses2).mean()
 
                 lag_cost = (ratio * cost_adv[rollout_data.indices]).mean()
@@ -61,9 +65,10 @@ class PPOLag(PPO):
 
         infos = getattr(self.rollout_buffer, "infos", [])
         if len(infos) > 0:
-            costs = th.tensor([float(info.get("cost", 0.0)) for info in infos], device=self.device)
+            costs = th.tensor(
+                [float(info.get("cost", 0.0)) for info in infos], device=self.device
+            )
             ep_cost = costs.mean().item()
             lam_val = th.nn.functional.softplus(self._log_lam).item()
             lam_new = max(0.0, lam_val + self.penalty_lr * (ep_cost - self.cost_limit))
             self._log_lam.data = th.log(th.expm1(th.tensor(lam_new)) + 1e-8)
-            
