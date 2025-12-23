@@ -1,5 +1,10 @@
 # EED Gym: Empathic Ethical Disobedience Benchmark
 
+[![arXiv](https://img.shields.io/badge/arXiv-2512.18474-b31b1b.svg)](https://arxiv.org/abs/2512.18474)
+[![Code](https://img.shields.io/badge/Code-GitHub-black.svg?logo=github)](https://github.com/dmytro-kuzmenko/eed_gym)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Models-yellow.svg)](https://huggingface.co/inq-android/eedgym-ckpts)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A Gymnasium-compatible environment and training stack for studying calibrated, empathic refusal ("ethical disobedience") with explicit trust, affect, and safety dynamics. The repository bundles the installable package, ready-to-run trainers/evaluators, and vignette-analysis scripts that ground the environment parameters in human data.
 
 EED Gym is a controlled simulation benchmark and does not claim to be a high-fidelity model of human psychology or real-world HRI behavior.
@@ -112,18 +117,17 @@ Tutorials cover install, quickstart, baseline training, evaluation, and extendin
 ## Citing EED Gym
 If you use EED Gym in your research, please cite the following paper:
 
-[![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/abs/XXXX.XXXXX)
+[![arXiv](https://img.shields.io/badge/arXiv-2512.18474-b31b1b.svg)](https://arxiv.org/abs/2512.18474)
 
 ```
-@misc{kuzmenko2026eedgym,
+@misc{kuzmenko2025eedgym,
   title        = {When Robots Say No: The Empathic Ethical Disobedience Benchmark},
   author       = {Dmytro Kuzmenko and Nadiya Shvai},
-  year         = {2026},
-  eprint       = {arXiv:XXXX.XXXXX},
+  year         = {2025},
+  eprint       = {arXiv:2512.18474},
   archivePrefix= {arXiv},
   primaryClass = {cs.RO},
   note         = {Accepted at the ACM/IEEE International Conference on Human-Robot Interaction (HRI 2026)},
-  doi          = {10.1145/nnnnnnn.nnnnnnn}
 }
 ```
 

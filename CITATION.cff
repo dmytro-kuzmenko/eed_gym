@@ -5,12 +5,16 @@ authors:
     given-names: Dmytro
   - family-names: Shvai
     given-names: Nadiya
-year: 2026
+year: 2025
 version: "1.0.0"
-doi: 10.1145/nnnnnnn.nnnnnnn
 repository-code: https://github.com/dmytro-kuzmenko/eed_gym
 abstract: >
-  EED Gym is a benchmark for studying calibrated, empathic refusal
-  ("ethical disobedience") in human-robot interaction, with explicit
-  modeling of safety, trust, affect, and blame.
+  Robots must balance compliance with safety and social expectations as blind obedience can cause harm, while over-refusal erodes trust. 
+  Existing safe reinforcement learning (RL) benchmarks emphasize physical hazards, while human-robot interaction trust studies are small-scale and hard to reproduce. 
+  We present the Empathic Ethical Disobedience (EED) Gym, a standardized testbed that jointly evaluates refusal safety and social acceptability. 
+  Agents weigh risk, affect, and trust when choosing to comply, refuse (with or without explanation), clarify, or propose safer alternatives. 
+  EED Gym provides different scenarios, multiple persona profiles, and metrics for safety, calibration, and refusals, with trust and blame models grounded in a vignette study. 
+  Using EED Gym, we find that action masking eliminates unsafe compliance, while explanatory refusals help sustain trust. 
+  Constructive styles are rated most trustworthy, empathic styles -- most empathic, and safe RL methods improve robustness but also make agents more prone to overly cautious behavior. 
+  We release code, configurations, and reference policies to enable reproducible evaluation and systematic human-robot interaction research on refusal and trust.
 license: MIT
