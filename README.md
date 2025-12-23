@@ -117,8 +117,6 @@ Tutorials cover install, quickstart, baseline training, evaluation, and extendin
 ## Citing EED Gym
 If you use EED Gym in your research, please cite the following paper:
 
-[![arXiv](https://img.shields.io/badge/arXiv-2512.18474-b31b1b.svg)](https://arxiv.org/abs/2512.18474)
-
 ```
 @misc{kuzmenko2025eedgym,
   title        = {When Robots Say No: The Empathic Ethical Disobedience Benchmark},
