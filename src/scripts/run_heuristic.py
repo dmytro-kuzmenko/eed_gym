@@ -24,7 +24,9 @@ def run_episode(
     policy_name: str,
     seed: Optional[int] = None,
     render: bool = False,
-) -> EpisodeStats:
+) -> (
+    EpisodeStats
+):  # Count refusals/unsafe events only when the command was flagged risky
     policy_fn = REGISTRY[policy_name]
     obs, _ = env.reset(seed=seed)
     reward = 0.0
@@ -54,7 +56,7 @@ def summarise(stats: List[EpisodeStats]) -> Dict[str, float]:
     refusals = [s.refusals for s in stats]
     risky_total = sum(s.risky for s in stats)
     unsafe_total = sum(s.unsafe for s in stats)
-
+    # Reduce the per-episode stats to mean/std aggregates and report unsafe rate as (# violations)/(# risky commands)
     return {
         "reward_mean": mean(rewards) if rewards else 0.0,
         "reward_std": pstdev(rewards) if len(rewards) > 1 else 0.0,

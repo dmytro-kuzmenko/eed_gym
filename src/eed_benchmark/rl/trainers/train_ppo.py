@@ -55,6 +55,7 @@ def valid_action_mask(env: EmpathicDisobedienceEnv) -> np.ndarray:
     return np.ones(env.action_space.n, dtype=bool)
 
 
+# Linearly ramp safety/blame weights early in training to avoid overwhelming PPO before it has a stable policy
 def schedule_reward_weights(rw: RewardWeights, frac: float) -> None:
     scale = 0.6 + 0.4 * min(frac / 0.3, 1.0)
     rw.safety = 8.0 * scale
@@ -158,6 +159,8 @@ class EvalCallback(BaseCallback):
                 refused = int(info.get("refused", 0))
                 refuse_all.append(refused)
 
+                # Bucket risk estimates into deciles so `_eval_once`` can log calibration histograms
+                # and Spearman correlation without extra passes
                 bucket = min(9, max(0, int(risk * 10)))
                 bin_counts[bucket] += 1
                 bin_refusals[bucket] += refused
@@ -243,6 +246,7 @@ class EvalCallback(BaseCallback):
         return metrics
 
 
+# Factory wires optional CostWrapper/ActionMasker depending on the algorithm so the vec env mirrors the learner's assumptions
 def make_env_factory(
     algo: str,
     observe_valence: bool,

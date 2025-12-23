@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Analyse vignette study outcomes (ANOVA, pairwise effects, power)."""
+"""
+
+This script analyzes vignette study outcomes (ANOVA, pairwise effects, power).
+Make sure to adapt the script with respect to your data sample as this is just an example.
+
+"""
 
 from __future__ import annotations
 
-import argparse
-import json
-import re
 from dataclasses import dataclass, asdict
-from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
@@ -103,6 +104,7 @@ def bootstrap_bca(
     return float(lo), float(hi)
 
 
+# Welch t-tests, CIs, and Hedge's g
 def pairwise_effects(
     df: pd.DataFrame,
     dv: str,
@@ -184,103 +186,3 @@ def run_anova(df: pd.DataFrame, dv: str, between: str) -> Dict[str, object]:
         .to_dict(orient="records"),
         "eta_squared": eta_sq,
     }
-
-
-def maybe_melt_wide(
-    df: pd.DataFrame,
-    dv: str,
-    id_col: str,
-    regex: str,
-    mapping: str,
-) -> pd.DataFrame:
-    pattern = re.compile(regex)
-    dv_cols = [c for c in df.columns if pattern.search(c)]
-    if not dv_cols:
-        raise ValueError(f"No columns matched regex '{regex}'")
-
-    mapping_dict: Dict[str, str] = {}
-    if mapping:
-        for pair in mapping.split(","):
-            key, value = pair.split(":", 1)
-            mapping_dict[key.strip()] = value.strip()
-    else:
-        for col in dv_cols:
-            mapping_dict[col] = col.split("_", 1)[-1]
-
-    long_df = (
-        df[[id_col] + dv_cols]
-        .melt(id_vars=id_col, var_name="_tmp", value_name=dv)
-        .assign(**{DEFAULT_BETWEEN: lambda d: d["_tmp"].map(mapping_dict)})
-        .drop(columns="_tmp")
-    )
-    return long_df
-
-
-def load_data(args: argparse.Namespace) -> pd.DataFrame:
-    df = pd.read_csv(args.csv)
-    if args.wide_dv_regex:
-        df = maybe_melt_wide(
-            df, args.dv, args.id, args.wide_dv_regex, args.wide_cond_map
-        )
-    return df
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Compute vignette ANOVA and pairwise effect sizes"
-    )
-    parser.add_argument("--csv", required=True, help="Path to vignette CSV")
-    parser.add_argument(
-        "--dv", required=True, help="Dependent variable column (e.g., trust)"
-    )
-    parser.add_argument(
-        "--between", default=DEFAULT_BETWEEN, help="Between-subject factor column"
-    )
-    parser.add_argument("--id", default=DEFAULT_ID, help="Participant ID column")
-    parser.add_argument("--alpha", type=float, default=0.05)
-    parser.add_argument(
-        "--nboot", type=int, default=20_000, help="Number of bootstrap samples for CIs"
-    )
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument(
-        "--export", type=Path, help="Optional path to export pairwise CSV"
-    )
-    parser.add_argument("--json-out", type=Path, help="Optional JSON output path")
-    parser.add_argument(
-        "--wide-dv-regex", default="", help="Regex to melt wide-format columns"
-    )
-    parser.add_argument(
-        "--wide-cond-map",
-        default="",
-        help="Mapping for wide columns, e.g. 'trust_emp:Empathic'",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    df = load_data(args)
-
-    anova = run_anova(df, args.dv, args.between)
-    effects = pairwise_effects(
-        df, args.dv, args.between, args.alpha, args.nboot, args.seed
-    )
-
-    if args.export:
-        out_df = pd.DataFrame([effect.as_dict() for effect in effects])
-        out_df.to_csv(args.export, index=False)
-        print(f"Saved pairwise results to {args.export}")
-
-    payload = {
-        "anova": anova,
-        "pairwise": [effect.as_dict() for effect in effects],
-    }
-    if args.json_out:
-        args.json_out.write_text(json.dumps(payload, indent=2))
-        print(f"Saved JSON summary to {args.json_out}")
-    else:
-        print(json.dumps(payload, indent=2))
-
-
-if __name__ == "__main__":
-    main()

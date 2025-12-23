@@ -21,6 +21,8 @@ class PPOLag(PPO):
         self.penalty_lr = float(penalty_lr)
         self._log_lam = nn.Parameter(th.tensor(0.0), requires_grad=False)
 
+    # Normalise the per-step costs into an advantage-like signal
+    # so the Lagrangian penalty has a comparable scale to PPO's policy loss
     def _compute_cost_advantages(self) -> th.Tensor:
         infos = getattr(self.rollout_buffer, "infos", None)
         if infos is None or len(infos) == 0:
@@ -56,6 +58,8 @@ class PPOLag(PPO):
                 )
                 pg_loss = th.max(pg_losses1, pg_losses2).mean()
 
+                # Treat the likelihood ratio as the policy gradient weight for the cost signal,
+                # making the lagrangian penalty track policy updates
                 lag_cost = (ratio * cost_adv[rollout_data.indices]).mean()
                 loss = pg_loss + lam * lag_cost
 

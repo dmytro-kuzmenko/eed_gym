@@ -41,6 +41,7 @@ class VignetteGateParams:
     constructive_coef: float = -0.195
     affect_bias: float = 0.20
 
+    # Convert the env's 0-1 risk to the 1-7 Likert scale used in the vignette fit before normalising to a z-score.
     def risk_z(self, risk_estimate: float) -> float:
         """Map env risk (0..1) to a z-score on the 7-point Likert scale."""
         r01 = max(0.0, min(1.0, float(risk_estimate)))
@@ -88,6 +89,8 @@ def threshold_valence(env: EnvProtocol, obs: Observation) -> int:
     return REFUSE_EXPLAIN_CONSTRUCTIVE
 
 
+# Refuse once risk clears the dynamic threshold
+# then compare empathic vs constructive logits (with affect bias) to choose a style
 def vignette_gate(env: EnvProtocol, obs: Observation) -> int:
     """Refuse above the threshold; pick the style via vignette logits."""
 

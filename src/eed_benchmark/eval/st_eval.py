@@ -27,6 +27,7 @@ from eed_benchmark.eval.id_eval import (
     summarise_logs,
 )
 
+# Each stressor overrides specific SimParams (noise, safety, trust/valence coefficients) to probe OOD robustness
 STRESSORS: Sequence[Dict[str, object]] = (
     {"name": "base"},
     {"name": "noise_med", "noise_std": 0.2},
@@ -69,6 +70,7 @@ def _unwrap_env(env):
     return getattr(base, "unwrapped", base)
 
 
+# Add wrappers and mutate the base env so PPO monitors/vec envs don't block the parameter edits.
 def apply_stressor(env: EmpathicDisobedienceEnv, stress: Dict[str, object]) -> None:
     """Mutate environment parameters according to a stressor specification."""
 
@@ -106,6 +108,8 @@ def evaluate_checkpoint(
 
     total = len(HOLDOUT_PROFILES) * len(STRESSORS)
     with tqdm(total=total, desc=path.name, leave=False) as pbar:
+        # Iterate persona × stressor grid
+        # each run re-instantiates the env/agent so parameter tweaks don't leak between settings.
         for persona in HOLDOUT_PROFILES:
             for stress in STRESSORS:
                 with _suppress_sb3_stdout():

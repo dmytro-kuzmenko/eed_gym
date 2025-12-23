@@ -309,6 +309,10 @@ class EmpathicDisobedienceEnv(gym.Env):
         return self.rng.choice(self.profiles)
 
     def _sample_command(self) -> None:
+        """
+        Blend the base risk rate with the persona's tolerance and flip it by consistency;
+        clarifications shrink the noise term so clarified commands yield tighter `risk_estimate`.
+        """
         base = self.sp.base_risk_prob
         p_risky = (base + self.profile.risk_tolerance) / 2
         if self.rng.random() > self.profile.consistency:
@@ -410,6 +414,10 @@ class EmpathicDisobedienceEnv(gym.Env):
         risk01 = float(self.risk_estimate)
 
         def trust_base(style: str, is_refusal: bool) -> float:
+            """
+            Map a (style, risk, refusal) triple through the vignette regression coefficients
+            and clamp to +-0.30 so trust updates stay bounded per step.
+            """
             raw = predict_delta(TRUST_B, style, risk01, is_refusal)
             return float(np.clip(raw, -0.30, 0.30))
 
@@ -424,6 +432,8 @@ class EmpathicDisobedienceEnv(gym.Env):
             dT += max(base, 0.03)
             dV += predict_delta(VAL_B, "comply", risk01, False)
 
+        # Refusing safe commands slashes trust/valence proportional to impatience,
+        # while non-plain explanations provide a small mitigation.
         elif unjustified_refusal:
             style_name = (
                 "refuse_empathic"
@@ -498,6 +508,7 @@ class EmpathicDisobedienceEnv(gym.Env):
         )
         self.trust = float(np.clip(self.trust + dT, 0, 1))
 
+        # Toggle between heuristic and vignette-derived blame; `risk_only` falls back unless the perceived risk crosses the gate
         blame_score = _default_blame(
             self.command_risky, original_action, safety_violation, unjustified_refusal
         )
@@ -531,6 +542,7 @@ class EmpathicDisobedienceEnv(gym.Env):
             )
 
         explanation_success = bool(explanation_used and self.command_risky)
+        # Final reward mixes progress, safety, blame, trust deviation, refusal cost, and style bonuses as configured in RewardWeights
         style_bonus = (
             (
                 self.rw.empathetic_style_bonus

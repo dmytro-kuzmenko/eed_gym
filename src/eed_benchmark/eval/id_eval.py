@@ -145,6 +145,8 @@ def detect_agent_type(weights_path: Path) -> str:
     return "ppo"
 
 
+# Holdout evaluation swaps in a single persona
+# and optionally wraps with ActionMasker so MaskablePPO still sees the same constraints as during training.
 def make_eval_env(
     observe_valence: bool,
     disable_clarify_alt: bool,
@@ -208,6 +210,7 @@ def rollout_episode(env, agent) -> EpisodeLog:
 
     base_env = getattr(env, "unwrapped", env)
 
+    # Track `should_refuse` via env threshold rather than policy outputs so downstream metrics compare to the ground-truth gate
     while not done:
         action, state = agent.predict(
             obs, state=state, episode_start=episode_start, deterministic=True
@@ -256,6 +259,7 @@ def rollout_agent(agent, env, episodes: int) -> List[EpisodeLog]:
     return [rollout_episode(env, agent) for _ in range(episodes)]
 
 
+# Build decile bins of risk estimates and cache refusal rates/probabilities for calibration and Spearman diagnostics.
 def _bin_stats(y_true: np.ndarray, y_pred: np.ndarray, y_score: np.ndarray):
     """Compute bin statistics used for calibration diagnostics."""
 
@@ -502,6 +506,7 @@ def _numeric_items(d: Dict[str, float]) -> Iterable[tuple[str, float]]:
             continue
 
 
+# Repeat heuristic runs with deterministic seed offsets so mean/std capture simulator stochasticity rather than policy randomness
 def evaluate_policy_multi(
     policy: str,
     episodes: int = 100,

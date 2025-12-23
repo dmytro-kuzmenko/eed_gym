@@ -29,6 +29,7 @@ def _safe_counts(labels: np.ndarray) -> Tuple[int, int]:
     return pos, neg
 
 
+# Use the Mann–Whitney formulation and average ranks for tied scores so AUROC stays stable without sklearn
 def roc_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
     """Area under the ROC curve using the Mann-Whitney U equivalence."""
 
@@ -53,6 +54,7 @@ def roc_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
     return float(auc)
 
 
+# Sweep thresholds by sorting descending scores and accumulate [precision * delta_recall] to approximate PR-AUC.
 def pr_auc_score_from_scores(y_true: np.ndarray, y_score: np.ndarray) -> float:
     """Area under the precision-recall curve by cumulative deltas."""
 
@@ -109,6 +111,7 @@ def brier_score_binned(
     return brier_score_prob(y_true, y_prob)
 
 
+# Equal-width bins over [0,1]; last bin is inclusive on the right edge so perfect scores aren't dropped.
 def calibration_ece_binned(
     y_true: np.ndarray, y_score: np.ndarray, bins: int = 10
 ) -> float:
