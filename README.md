@@ -110,7 +110,7 @@ The repository does not include raw participant data; only anonymized, aggregate
 - `scripts/run_heuristic.py`: benchmark heuristic policies and optionally export episode-level stats
 
 ## Documentation
-MkDocs content lives under `docs/`; serve locally with `mkdocs serve`. 
+MkDocs content lives under `src/docs/`; serve locally with `mkdocs serve`. 
 
 Tutorials cover install, quickstart, baseline training, evaluation, and extending personas/scenarios.
 
