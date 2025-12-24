@@ -4,6 +4,7 @@
 [![Code](https://img.shields.io/badge/Code-GitHub-black.svg?logo=github)](https://github.com/dmytro-kuzmenko/eed_gym)
 [![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Models-yellow.svg)](https://huggingface.co/inq-android/eedgym-ckpts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-Project_Page-0A66C2?logo=googlechrome&logoColor=white)](https://dmytro-kuzmenko.github.io/eed-gym/)
 
 A Gymnasium-compatible environment and training stack for studying calibrated, empathic refusal ("ethical disobedience") with explicit trust, affect, and safety dynamics. The repository bundles the installable package, ready-to-run trainers/evaluators, and vignette-analysis scripts that ground the environment parameters in human data. This repository is a part of the "When Robots Say No: The Empathic Ethical Disobedience Benchmark" paper accepted to HRI 2026.
 
