@@ -30,7 +30,7 @@ Fixes to training and evaluation that change reported numbers are described in [
 - `st_eval --policy` for heuristics.
 - `train_ppo --config`, `--tensorboard-log`, `--blame-mode`; periodic evaluation metrics are logged under `eval/`.
 - `src/scripts/reproduce.sh`, `src/scripts/make_tables.py`, a CLI for `vignette_effects.py`.
-- Test suite, ruff config, GitHub Actions workflow, `uv.lock`.
+- Test suite, ruff config, `uv.lock`.
 - `src/docs/spec.md` with every env constant.
 
 ## 1.0.0
