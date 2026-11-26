@@ -11,7 +11,7 @@ A Gymnasium-compatible environment and training stack for studying calibrated, e
 
 EED Gym is a controlled simulation benchmark and does not claim to be a high-fidelity model of human psychology or real-world HRI behavior.
 
-![EED-Gym overview](media/eed_gym.png)
+![EED-Gym overview](https://raw.githubusercontent.com/dmytro-kuzmenko/eed_gym/main/media/eed_gym.png)
 
 ---
 
@@ -82,7 +82,7 @@ python src/scripts/make_tables.py artifacts/results
 The Hugging Face repository [dkuzmenko/eedgym-ckpts](https://huggingface.co/dkuzmenko/eedgym-ckpts) holds two sets, each with 8 configurations and 5 seeds:
 
 - `v1.1/`: trained with this release. Use these for new work. Each checkpoint has a `.json` run config that the evaluators read.
-- `v1.0/`: the checkpoints used for the paper. They load in v1.1, but read [ERRATA.md](ERRATA.md) first: the v1.0 Masked and Lagrangian checkpoints were trained without an active mask or cost constraint.
+- `v1.0/`: the checkpoints used for the paper. They load in v1.1, but read [ERRATA.md](https://github.com/dmytro-kuzmenko/eed_gym/blob/main/ERRATA.md) first: the v1.0 Masked and Lagrangian checkpoints were trained without an active mask or cost constraint.
 
 ```bash
 hf download dkuzmenko/eedgym-ckpts --include "v1.1/*" --local-dir eedgym-ckpts
@@ -116,7 +116,7 @@ Blame modes:
   is risky (or the perceived risk exceeds `SimParams.vg_blame_risk_gate`).
 - `always` forces the vignette-based model for every step.
 
-Every constant of the environment is listed in [src/docs/spec.md](src/docs/spec.md).
+Every constant of the environment is listed in [src/docs/spec.md](https://github.com/dmytro-kuzmenko/eed_gym/blob/main/src/docs/spec.md).
 
 ## Results and errata
 Current results, v1.1 code. Mean ± 95% interval over 5 seeds, 600k steps, 100 deterministic episodes per evaluation.
@@ -128,11 +128,11 @@ Current results, v1.1 code. Mean ± 95% interval over 5 seeds, 600k steps, 100 d
 | Masked PPO | 1.6 ± 1.1 | 0.82 ± 0.07 | 0.85 ± 0.02 | 2.3 ± 1.0 | 0.76 ± 0.05 | 0.81 ± 0.03 |
 | Lagrangian PPO | 1.5 ± 1.2 | 0.79 ± 0.06 | 0.83 ± 0.10 | 3.1 ± 1.4 | 0.75 ± 0.04 | 0.77 ± 0.11 |
 
-> **Note.** These numbers differ from the paper. Version 1.1 fixes defects in the v1.0 training and evaluation code, so use the tables here when you compare against EED Gym. [ERRATA.md](ERRATA.md) lists each defect and shows paper and v1.1 values side by side. Ablation, calibration and heuristic tables are in [src/results/v1.1/tables.md](src/results/v1.1/tables.md). The git tag `v1.0.0` is the code as published with the paper.
+> **Note.** These numbers differ from the paper. Version 1.1 fixes defects in the v1.0 training and evaluation code, so use the tables here when you compare against EED Gym. [ERRATA.md](https://github.com/dmytro-kuzmenko/eed_gym/blob/main/ERRATA.md) lists each defect and shows paper and v1.1 values side by side. Ablation, calibration and heuristic tables are in [src/results/v1.1/tables.md](https://github.com/dmytro-kuzmenko/eed_gym/blob/main/src/results/v1.1/tables.md). The git tag `v1.0.0` is the code as published with the paper.
 
 ## Vignette Study and Human Grounding
 
-![Vignettes](media/vignettes.png)
+![Vignettes](https://raw.githubusercontent.com/dmytro-kuzmenko/eed_gym/main/media/vignettes.png)
 
 To ground social dynamics in human judgments, EED Gym is parameterized using a vignette study based on short text scenarios describing unsafe or ambiguous human commands and alternative robot responses (compliance, empathic refusal, constructive refusal).
 
