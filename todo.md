@@ -21,7 +21,7 @@
 - [x] `vignette_effects.py` CLI
 - [x] `reproduce.sh` and `make_tables.py`
 - [x] CHANGELOG.md and ERRATA.md (defect list)
-- [ ] Corrected result tables in ERRATA.md, after the rerun finishes
+- [x] Corrected result tables in ERRATA.md and `src/results/v1.1/`
 
 ## Needs you
 - [ ] Review, commit, tag `v1.1.0`, push

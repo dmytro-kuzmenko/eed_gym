@@ -114,7 +114,7 @@ Blame modes:
 Every constant of the environment is listed in [src/docs/spec.md](src/docs/spec.md).
 
 ## Results and errata
-Version 1.1 fixes defects in the v1.0 training and evaluation code that affect numbers reported in the paper. [ERRATA.md](ERRATA.md) lists them; corrected tables follow once the rerun is in. The git tag `v1.0.0` is the code as published with the paper.
+Version 1.1 fixes defects in the v1.0 training and evaluation code that affect numbers reported in the paper. [ERRATA.md](ERRATA.md) lists them next to the corrected tables, and `src/results/v1.1/` has the full v1.1 results. The git tag `v1.0.0` is the code as published with the paper.
 
 ## Vignette Study and Human Grounding
 
