@@ -17,13 +17,19 @@ EED Gym is a controlled simulation benchmark and does not claim to be a high-fid
 
 ## Environment Setup
 
-### Recommended (`uv`)
+### From PyPI
+```bash
+pip install eed-gym
+```
+This installs the `eed_benchmark` package: the env, trainers and evaluators. Clone the repo if you also want the scripts, docs and tests.
+
+### From source, recommended (`uv`)
 ```bash
 uv venv .venv && source .venv/bin/activate
 uv pip install -e .
 ```
 
-### Standard `pip`
+### From source, standard `pip`
 ```bash
 python -m venv .venv
 source .venv/bin/activate
