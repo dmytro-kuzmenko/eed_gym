@@ -3,7 +3,7 @@
 [![Paper](https://img.shields.io/badge/ACM%20DL-10.1145%2F3757279.3785547-0085CA.svg)](https://doi.org/10.1145/3757279.3785547)
 [![arXiv](https://img.shields.io/badge/arXiv-2512.18474-b31b1b.svg)](https://arxiv.org/abs/2512.18474)
 [![Code](https://img.shields.io/badge/Code-GitHub-black.svg?logo=github)](https://github.com/dmytro-kuzmenko/eed_gym)
-[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Models-yellow.svg)](https://huggingface.co/inq-android/eedgym-ckpts)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Models-yellow.svg)](https://huggingface.co/dkuzmenko/eedgym-ckpts)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/Website-Project_Page-0A66C2?logo=googlechrome&logoColor=white)](https://dmytro-kuzmenko.github.io/eed-gym/)
 
@@ -79,13 +79,13 @@ python src/scripts/make_tables.py artifacts/results
 ```
 
 ## Pretrained checkpoints
-The Hugging Face repository [inq-android/eedgym-ckpts](https://huggingface.co/inq-android/eedgym-ckpts) holds two sets, each with 8 configurations and 5 seeds:
+The Hugging Face repository [dkuzmenko/eedgym-ckpts](https://huggingface.co/dkuzmenko/eedgym-ckpts) holds two sets, each with 8 configurations and 5 seeds:
 
 - `v1.1/`: trained with this release. Use these for new work. Each checkpoint has a `.json` run config that the evaluators read.
 - `v1.0/`: the checkpoints used for the paper. They load in v1.1, but read [ERRATA.md](ERRATA.md) first: the v1.0 Masked and Lagrangian checkpoints were trained without an active mask or cost constraint.
 
 ```bash
-hf download inq-android/eedgym-ckpts --include "v1.1/*" --local-dir eedgym-ckpts
+hf download dkuzmenko/eedgym-ckpts --include "v1.1/*" --local-dir eedgym-ckpts
 python -m eed_benchmark.eval.id_eval --dir eedgym-ckpts/v1.1/ppo
 ```
 
