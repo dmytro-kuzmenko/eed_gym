@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
-"""
+"""Vignette study statistics: one-way ANOVA, pairwise Welch tests, Hedges' g
+with BCa bootstrap intervals, and post-hoc power.
 
-This script analyzes vignette study outcomes (ANOVA, pairwise effects, power).
-Make sure to adapt the script with respect to your data sample as this is just an example.
+Input is a long-format CSV with one row per rating: a participant id column, a
+condition column, and one numeric column per outcome.
 
+    python src/scripts/vignette_effects.py ratings.csv --dv trust blame empathy \
+        --between condition --out-dir artifacts/vignette
+
+Needs the analysis extras: pip install -e ".[analysis]".
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+import argparse
+import json
+from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
@@ -186,3 +194,34 @@ def run_anova(df: pd.DataFrame, dv: str, between: str) -> Dict[str, object]:
         .to_dict(orient="records"),
         "eta_squared": eta_sq,
     }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Vignette ANOVA and pairwise effects")
+    parser.add_argument("csv", type=Path, help="Long-format ratings CSV")
+    parser.add_argument("--dv", nargs="+", required=True, help="Outcome columns")
+    parser.add_argument("--between", default=DEFAULT_BETWEEN, help="Condition column")
+    parser.add_argument("--alpha", type=float, default=0.05)
+    parser.add_argument("--n-boot", type=int, default=10_000)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--out-dir", type=Path, help="Write results_<dv>.csv and anova.json")
+    args = parser.parse_args()
+
+    df = pd.read_csv(args.csv)
+    anova = {}
+    for dv in args.dv:
+        anova[dv] = run_anova(df, dv, args.between)
+        effects = pd.DataFrame(
+            [e.as_dict() for e in pairwise_effects(df, dv, args.between, args.alpha, args.n_boot, args.seed)]
+        )
+        print(f"\n== {dv}: eta^2 = {anova[dv]['eta_squared']:.3f} ==")
+        print(effects.to_string(index=False))
+        if args.out_dir:
+            args.out_dir.mkdir(parents=True, exist_ok=True)
+            effects.to_csv(args.out_dir / f"results_{dv}.csv", index=False)
+    if args.out_dir:
+        (args.out_dir / "anova.json").write_text(json.dumps(anova, indent=2))
+
+
+if __name__ == "__main__":
+    main()

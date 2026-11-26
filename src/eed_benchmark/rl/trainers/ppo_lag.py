@@ -1,78 +1,84 @@
-#!/usr/bin/env python3
-import torch as th
-from torch import nn
+"""PPO with a Lagrangian penalty on a per-episode cost constraint."""
+
+from __future__ import annotations
+
+from typing import List
+
+import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.type_aliases import RolloutBufferSamples
+from stable_baselines3.common.vec_env import VecEnv, VecEnvWrapper
+
+
+class _CostPenaltyVecEnv(VecEnvWrapper):
+    """Subtract ``multiplier * cost`` from the reward the learner sees.
+
+    Wrappers below this one (for example ``VecMonitor``) keep the raw reward.
+    """
+
+    def __init__(self, venv: VecEnv, algo: "PPOLag"):
+        super().__init__(venv)
+        self.algo = algo
+        self._running_cost = np.zeros(self.num_envs, dtype=np.float64)
+
+    def reset(self):
+        self._running_cost[:] = 0.0
+        return self.venv.reset()
+
+    def step_wait(self):
+        obs, rewards, dones, infos = self.venv.step_wait()
+        costs = np.array([self.algo.cost_of(info) for info in infos], dtype=np.float64)
+        self._running_cost += costs
+        for idx, done in enumerate(dones):
+            if done:
+                self.algo.episode_costs.append(float(self._running_cost[idx]))
+                self._running_cost[idx] = 0.0
+        penalised = rewards - self.algo.lagrange_multiplier * costs
+        return obs, penalised.astype(np.float32), dones, infos
 
 
 class PPOLag(PPO):
-    """
-    PPO with a single cost constraint enforced via Lagrange penalty.
+    """PPO that maximises ``E[sum R] - lambda * (E[sum C] - cost_limit)``.
 
-    • `cost_limit` average cost allowed *per episode step*
-    • `penalty_lr` step size for dual (λ) update
-    • Environment must add a float `info["cost"]` every step
-      (e.g. 1.0 on safety violation, else 0.0).
+    * ``cost_limit``: allowed expected cost per episode (``d`` in the paper).
+    * ``penalty_lr``: step size of the dual ascent on ``lambda``.
+    * The per-step cost is ``info["cost"]``, or 1.0 on ``info["safety_violation"]``.
+
+    The multiplier is updated once per rollout from the episodes that finished
+    in it: ``lambda <- max(0, lambda + penalty_lr * (mean_cost - cost_limit))``.
     """
 
-    def __init__(self, *args, cost_limit=0.25, penalty_lr=0.02, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, cost_limit: float = 0.25, penalty_lr: float = 0.02, **kwargs):
         self.cost_limit = float(cost_limit)
         self.penalty_lr = float(penalty_lr)
-        self._log_lam = nn.Parameter(th.tensor(0.0), requires_grad=False)
+        self.lagrange_multiplier = 0.0
+        self.episode_costs: List[float] = []
+        self._penalty_env = None
+        super().__init__(*args, **kwargs)
 
-    # Normalise the per-step costs into an advantage-like signal
-    # so the Lagrangian penalty has a comparable scale to PPO's policy loss
-    def _compute_cost_advantages(self) -> th.Tensor:
-        infos = getattr(self.rollout_buffer, "infos", None)
-        if infos is None or len(infos) == 0:
-            return th.zeros(self.rollout_buffer.buffer_size, device=self.device)
-        costs = th.tensor(
-            [float(info.get("cost", 0.0)) for info in infos], device=self.device
+    @staticmethod
+    def cost_of(info: dict) -> float:
+        if "cost" in info:
+            return float(info["cost"])
+        return 1.0 if info.get("safety_violation", False) else 0.0
+
+    def _excluded_save_params(self) -> List[str]:
+        return super()._excluded_save_params() + ["_penalty_env"]
+
+    def collect_rollouts(self, env, callback, rollout_buffer, n_rollout_steps) -> bool:
+        if self._penalty_env is None or self._penalty_env.venv is not env:
+            self._penalty_env = _CostPenaltyVecEnv(env, self)
+        return super().collect_rollouts(
+            self._penalty_env, callback, rollout_buffer, n_rollout_steps
         )
-        adv = costs - costs.mean()
-        std = adv.std()
-        if std > 1e-8:
-            adv = (adv - adv.mean()) / (std + 1e-8)
-        else:
-            adv = th.zeros_like(adv)
-        return adv
 
-    def _update_policy_using_rollout_buffer(self) -> None:
-        """Override PPO update to add λ·J_cost and update λ via dual ascent."""
-        lam = th.nn.functional.softplus(self._log_lam)
-        cost_adv = self._compute_cost_advantages()
-
-        for epoch in range(self.n_epochs):
-            for rollout_data in self.rollout_buffer.get(self.batch_size):
-                assert isinstance(rollout_data, RolloutBufferSamples)
-                if self.policy.use_sde:
-                    self.policy.reset_noise(self.batch_size)
-                distribution = self.policy.get_distribution(rollout_data.observations)
-                log_prob = distribution.log_prob(rollout_data.actions)
-                ratio = th.exp(log_prob - rollout_data.old_log_prob)
-
-                pg_losses1 = -rollout_data.advantages * ratio
-                pg_losses2 = -rollout_data.advantages * th.clamp(
-                    ratio, 1 - self.clip_range, 1 + self.clip_range
-                )
-                pg_loss = th.max(pg_losses1, pg_losses2).mean()
-
-                # Treat the likelihood ratio as the policy gradient weight for the cost signal,
-                # making the lagrangian penalty track policy updates
-                lag_cost = (ratio * cost_adv[rollout_data.indices]).mean()
-                loss = pg_loss + lam * lag_cost
-
-                self.policy.optimizer.zero_grad()
-                loss.backward()
-                self.policy.optimizer.step()
-
-        infos = getattr(self.rollout_buffer, "infos", [])
-        if len(infos) > 0:
-            costs = th.tensor(
-                [float(info.get("cost", 0.0)) for info in infos], device=self.device
+    def train(self) -> None:
+        if self.episode_costs:
+            mean_cost = float(np.mean(self.episode_costs))
+            self.episode_costs.clear()
+            self.lagrange_multiplier = max(
+                0.0,
+                self.lagrange_multiplier + self.penalty_lr * (mean_cost - self.cost_limit),
             )
-            ep_cost = costs.mean().item()
-            lam_val = th.nn.functional.softplus(self._log_lam).item()
-            lam_new = max(0.0, lam_val + self.penalty_lr * (ep_cost - self.cost_limit))
-            self._log_lam.data = th.log(th.expm1(th.tensor(lam_new)) + 1e-8)
+            self.logger.record("lagrangian/episode_cost", mean_cost)
+        self.logger.record("lagrangian/multiplier", self.lagrange_multiplier)
+        super().train()

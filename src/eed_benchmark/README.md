@@ -1,9 +1,11 @@
 # eed_benchmark
 
-Installable Python package for the Empathic Ethical Disobedience environment and helpers.
+Installable Python package for the Empathic Ethical Disobedience environment.
 
-- `envs/`: `EmpathicDisobedienceEnv`, `RewardWeights`, `SimParams`
-- `eval/`: `id_eval.py` (ID metrics), small utilities
+- `envs/`: `EmpathicDisobedienceEnv`, `RewardWeights`, `SimParams`, `CostWrapper`
+- `rl/trainers/`: `train_ppo.py` (PPO, PPO-LSTM, Maskable PPO, Lagrangian PPO), `ppo_lag.py`
+- `eval/`: `id_eval.py`, `st_eval.py`, `metrics.py`
 - `heuristics/`: baseline heuristic policies
+- `configs/default.yaml`: paper defaults for `train_ppo --config`
 
-See the docs site for API details: `docs/api.md`.
+Importing the package registers the env as `EEDGym-v1`.

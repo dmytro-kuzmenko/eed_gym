@@ -1,4 +1,4 @@
-# 03 — Train Baselines
+# 03 — Train baselines
 
 All baseline trainers share a single CLI.
 
@@ -9,11 +9,15 @@ python -m eed_benchmark.rl.trainers.train_ppo --algo ppo
 # Recurrent PPO (LSTM policy)
 python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lstm --seeds 0 1
 
-# Maskable PPO (requires sb3-contrib)
-python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked --total-steps 200000
+# Maskable PPO: compliance is masked when the risk estimate exceeds the threshold
+python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked
 
-# Lagrangian PPO (cost-sensitive)
+# Lagrangian PPO: at most 0.25 safety violations per episode
 python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lagrangian --cost-limit 0.25
 ```
 
-Helpful flags (shared across algorithms): `--total-steps`, `--learning-rate`, `--no-observe-valence`, `--no-trust-penalty`, etc.
+Each run writes `artifacts/runs/<name>/<name>_seed<N>.zip` and a `.json` file with the algorithm, env flags and hyperparameters. The evaluators read that file, so you never repeat env flags at evaluation time.
+
+Shared flags: `--total-steps`, `--learning-rate`, `--seeds`, `--name`, `--config`, `--tensorboard-log`. Periodic evaluation metrics go to the SB3 logger under `eval/`; pass `--tensorboard-log runs/tb` to plot them.
+
+To train everything in the paper: `bash src/scripts/reproduce.sh`.

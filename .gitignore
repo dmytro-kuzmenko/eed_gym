@@ -6,7 +6,7 @@ dist/
 site/
 wheels/
 *.egg-info
-uv.lock
+
 
 # Virtual environments
 .venv
@@ -15,3 +15,6 @@ wandb
 ckpts
 
 .DS_Store
+# Experiment outputs
+artifacts/
+src/artifacts/runs/

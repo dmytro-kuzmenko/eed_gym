@@ -1,5 +1,6 @@
 # results
 
-- `vignette/`: vignette statistical analyis and regression fit coefficeints
+- `vignette/`: vignette statistical analysis and regression fit coefficients
+- `v1.1/`: tables from the v1.1 rerun (`src/scripts/reproduce.sh`, then `src/scripts/make_tables.py`)
 
-Evaluation or plotting scripts should treat these as read-only snapshots; regenerated outputs belong under `artifacts/`.
+Treat these as read-only snapshots; regenerated outputs belong under `artifacts/`.

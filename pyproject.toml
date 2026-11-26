@@ -1,31 +1,47 @@
 [project]
 name = "eed-gym"
-version = "0.1.0"
-description = "eed-gym paper benchmark"
+version = "1.1.0"
+description = "EED Gym: a Gymnasium benchmark for calibrated, empathic refusal in human-robot interaction"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.12"
 dependencies = [
     "gymnasium>=1.1.1",
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.6.18",
-    "mkdocstrings[python]>=0.30.0",
-    "pandas>=2.3.2",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
     "sb3-contrib>=2.7.0",
     "scipy>=1.16.0",
     "stable-baselines3>=2.6.0",
-    "statsmodels>=0.14.5",
     "torch>=2.7.1",
     "tqdm>=4.67.1",
-    "wandb>=0.21.0",
 ]
+
+[project.optional-dependencies]
+analysis = ["pandas>=2.3.2", "statsmodels>=0.14.5"]
+docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.18", "mkdocstrings[python]>=0.30.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.urls]
+Paper = "https://doi.org/10.1145/3757279.3785547"
+Repository = "https://github.com/dmytro-kuzmenko/eed_gym"
 
 [build-system]
 requires = ["setuptools>=63", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-include-package-data = true
-
 [tool.setuptools.packages.find]
-include = ["eed_benchmark*" ]
-exclude = ["tests*", "scripts*", "results*", "artifacts*", "docs*"]
+where = ["src"]
+include = ["eed_benchmark*"]
+
+[tool.setuptools.package-data]
+eed_benchmark = ["configs/*.yaml", "data/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

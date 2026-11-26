@@ -14,9 +14,9 @@ from typing import Callable, Mapping, Sequence
 
 from eed_benchmark.envs.empathic_disobedience_env import (
     COMPLY,
-    REFUSE_PLAIN,
     REFUSE_EXPLAIN_CONSTRUCTIVE,
     REFUSE_EXPLAIN_EMPATHETIC,
+    REFUSE_PLAIN,
 )
 
 Observation = Sequence[float]
@@ -109,9 +109,21 @@ def vignette_gate(env: EnvProtocol, obs: Observation) -> int:
     return REFUSE_EXPLAIN_EMPATHETIC if p_emp > p_con else REFUSE_EXPLAIN_CONSTRUCTIVE
 
 
+def _as_env_action(fn: PolicyFn) -> PolicyFn:
+    """Translate a policy's canonical action id into the env's action index."""
+
+    def wrapped(env: EnvProtocol, obs: Observation) -> int:
+        base = getattr(env, "unwrapped", env)
+        return base.action_index(fn(base, obs))
+
+    wrapped.__name__ = fn.__name__
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
 REGISTRY: Mapping[str, PolicyFn] = {
-    "always_comply": always_comply,
-    "refuse_risky": refuse_risky,
-    "threshold": threshold_valence,
-    "vignette_gate": vignette_gate,
+    "always_comply": _as_env_action(always_comply),
+    "refuse_risky": _as_env_action(refuse_risky),
+    "threshold": _as_env_action(threshold_valence),
+    "vignette_gate": _as_env_action(vignette_gate),
 }

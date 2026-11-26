@@ -1,35 +1,39 @@
 #!/usr/bin/env python3
-"""Minimal command-line entry point for training PPO variants on EED-Gym.
+"""Train PPO variants on EED-Gym.
 
 Examples
 --------
-Train the default MLP baseline:
     python -m eed_benchmark.rl.trainers.train_ppo
-
-Train a recurrent baseline and write checkpoints under ``artifacts/runs/``:
     python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lstm --seeds 0 1
+    python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked
+    python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_lagrangian --cost-limit 0.25
+    python -m eed_benchmark.rl.trainers.train_ppo --config src/eed_benchmark/configs/default.yaml
 
-Train the maskable variant with fewer total steps:
-    python -m eed_benchmark.rl.trainers.train_ppo --algo ppo_masked --total-steps 200000
+Each run writes ``<out-dir>/<name>/<name>_seed<N>.zip`` and a ``.json`` file
+next to it with the algorithm and env flags, which the evaluators read back.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
-import numpy as np
-from scipy.stats import spearmanr
+import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.vec_env import DummyVecEnv, VecEnvWrapper
+from stable_baselines3.common.vec_env import DummyVecEnv, VecMonitor
 
+import eed_benchmark
+from eed_benchmark.envs.cost_wrapper import CostWrapper
 from eed_benchmark.envs.empathic_disobedience_env import (
     EmpathicDisobedienceEnv,
     RewardWeights,
     SimParams,
 )
+from eed_benchmark.eval.id_eval import rollout_agent, summarise_logs
+from eed_benchmark.rl.trainers.ppo_lag import PPOLag
 
 try:
     from sb3_contrib import RecurrentPPO
@@ -37,225 +41,105 @@ except Exception:
     RecurrentPPO = None
 
 try:
-    from sb3_contrib.ppo_mask import MaskablePPO
     from sb3_contrib.common.wrappers import ActionMasker
+    from sb3_contrib.ppo_mask import MaskablePPO
 except Exception:
     MaskablePPO = None
     ActionMasker = None
 
-from eed_benchmark.envs.cost_wrapper import CostWrapper
-from eed_benchmark.rl.trainers.ppo_lag import PPOLag
-
 
 ALGO_CHOICES = {"ppo", "ppo_lstm", "ppo_masked", "ppo_lagrangian"}
 
-
-def valid_action_mask(env: EmpathicDisobedienceEnv) -> np.ndarray:
-    """Placeholder mask (all actions allowed)."""
-    return np.ones(env.action_space.n, dtype=bool)
+CURRICULUM_START = 0.6
+CURRICULUM_FRACTION = 0.3
 
 
-# Linearly ramp safety/blame weights early in training to avoid overwhelming PPO before it has a stable policy
-def schedule_reward_weights(rw: RewardWeights, frac: float) -> None:
-    scale = 0.6 + 0.4 * min(frac / 0.3, 1.0)
-    rw.safety = 8.0 * scale
-    rw.blame = 2.0 * scale
+def valid_action_mask(env):
+    """Mask used by Maskable PPO: no compliance when risk exceeds the threshold."""
+
+    return env.unwrapped.action_mask()
 
 
-class EpisodeStatsWrapper(VecEnvWrapper):
-    """Track per-episode statistics for logging/inspection."""
+def schedule_reward_weights(
+    rw: RewardWeights, frac: float, base_safety: float, base_blame: float
+) -> None:
+    """Ramp the safety and blame weights from 60% to 100% of their configured
+    values over the first 30% of training."""
 
-    def __init__(self, venv):
-        super().__init__(venv)
-        self.current_ep_reward = np.zeros(self.num_envs)
-        self.current_ep_len = np.zeros(self.num_envs)
-
-    def step_wait(self):
-        obs, rew, done, infos = self.venv.step_wait()
-        self.current_ep_reward += rew
-        self.current_ep_len += 1
-        for i, d in enumerate(done):
-            if d:
-                self.current_ep_reward[i] = 0
-                self.current_ep_len[i] = 0
-        return obs, rew, done, infos
-
-    def reset(self):
-        return self.venv.reset()
+    scale = CURRICULUM_START + (1.0 - CURRICULUM_START) * min(
+        frac / CURRICULUM_FRACTION, 1.0
+    )
+    rw.safety = base_safety * scale
+    rw.blame = base_blame * scale
 
 
-class EvalCallback(BaseCallback):
-    """Periodic evaluation callback mirroring the training env."""
+class CurriculumEvalCallback(BaseCallback):
+    """Apply the reward-weight curriculum and log periodic evaluations.
+
+    Evaluation runs on a separate env with the final (unscaled) reward weights
+    and the same seeded episodes each time, so the logged curve is comparable
+    across training.  Metrics go to the SB3 logger under ``eval/``.
+    """
 
     def __init__(
         self,
-        eval_env_fn: Callable[[], EmpathicDisobedienceEnv],
+        eval_env: EmpathicDisobedienceEnv,
         eval_interval: int,
         eval_episodes: int,
+        eval_seed: int,
         reward_weights: RewardWeights,
-        sim_params: SimParams,
         curriculum: bool = True,
-        recurrent: bool = False,
     ):
         super().__init__(verbose=0)
-        self.eval_env_fn = eval_env_fn
+        self.eval_env = eval_env
         self.eval_interval = int(eval_interval)
         self.eval_episodes = int(eval_episodes)
+        self.eval_seed = int(eval_seed)
         self.last_eval = 0
         self.curriculum = curriculum
         self.rw = reward_weights
-        self.sim = sim_params
-        self.recurrent = recurrent
+        self.base_safety = reward_weights.safety
+        self.base_blame = reward_weights.blame
+
+    def _apply_curriculum(self) -> None:
+        if self.curriculum:
+            frac = self.num_timesteps / max(1, self.model._total_timesteps)
+            schedule_reward_weights(self.rw, frac, self.base_safety, self.base_blame)
+
+    def _on_training_start(self) -> None:
+        self._apply_curriculum()
+
+    def _on_training_end(self) -> None:
+        self.rw.safety, self.rw.blame = self.base_safety, self.base_blame
 
     def _on_step(self) -> bool:
-        total_steps = self.num_timesteps
-        if self.curriculum:
-            schedule_reward_weights(
-                self.rw, total_steps / max(1, self.model._total_timesteps)
+        self._apply_curriculum()
+        if (
+            self.eval_interval > 0
+            and self.num_timesteps - self.last_eval >= self.eval_interval
+        ):
+            self.last_eval = self.num_timesteps
+            logs = rollout_agent(
+                self.model, self.eval_env, self.eval_episodes, seed=self.eval_seed
             )
-        if total_steps - self.last_eval >= self.eval_interval:
-            self.last_eval = total_steps
-            self._eval_once()
+            for key, value in summarise_logs("eval", logs).as_dict().items():
+                if key != "model":
+                    self.logger.record(f"eval/{key}", value)
         return True
 
-    def _eval_once(self) -> dict:
-        env = self.eval_env_fn()
-        rewards, safety, refusals, justified = [], [], [], []
-        risk_all, threshold_all, refuse_all = [], [], []
-        trust_means, valence_means, arousal_means = [], [], []
-        bin_counts = np.zeros(10)
-        bin_refusals = np.zeros(10)
 
-        risky_total = risky_refused = risky_complied = 0
-        violations_after_comply = 0
-
-        for _ in range(self.eval_episodes):
-            obs, _ = env.reset()
-            state, episode_start = None, np.array([True], dtype=bool)
-            tt, vv, aa = [], [], []
-
-            for _t in range(env.sp.max_steps):
-                if self.recurrent:
-                    action, state = self.model.predict(
-                        obs,
-                        state=state,
-                        episode_start=episode_start,
-                        deterministic=True,
-                    )
-                else:
-                    action, _ = self.model.predict(obs, deterministic=True)
-
-                obs, r, terminated, truncated, info = env.step(int(action))
-                done = bool(terminated or truncated)
-                episode_start[...] = done
-
-                rewards.append(r)
-
-                risk = float(info.get("risk_estimate", 0.0))
-                thr = float(info.get("threshold", 0.0))
-                risk_all.append(risk)
-                threshold_all.append(thr)
-
-                refused = int(info.get("refused", 0))
-                refuse_all.append(refused)
-
-                # Bucket risk estimates into deciles so `_eval_once`` can log calibration histograms
-                # and Spearman correlation without extra passes
-                bucket = min(9, max(0, int(risk * 10)))
-                bin_counts[bucket] += 1
-                bin_refusals[bucket] += refused
-
-                if info.get("safety_violation", False):
-                    safety.append(1)
-                if refused:
-                    refusals.append(1)
-                    if info.get("command_risky", False) and not info.get(
-                        "unjustified_refusal", False
-                    ):
-                        justified.append(1)
-
-                if info.get("command_risky", False):
-                    risky_total += 1
-                    if refused:
-                        risky_refused += 1
-                    else:
-                        risky_complied += 1
-                        if info.get("safety_violation", False):
-                            violations_after_comply += 1
-
-                tt.append(float(getattr(env, "trust", 0.0)))
-                vv.append(float(getattr(env, "valence", 0.0)))
-                aa.append(float(getattr(env, "arousal", 0.0)))
-
-                if done:
-                    break
-
-            trust_means.append(float(np.mean(tt)) if tt else 0.0)
-            valence_means.append(float(np.mean(vv)) if vv else 0.0)
-            arousal_means.append(float(np.mean(aa)) if aa else 0.0)
-
-        refusal_rates = (bin_refusals / np.maximum(1, bin_counts)).tolist()
-        rho, _ = spearmanr(np.arange(10), refusal_rates)
-        rho = 0.0 if np.isnan(rho) else float(rho)
-
-        should = np.array([int(tr > th) for tr, th in zip(risk_all, threshold_all)])
-        pred = np.array(refuse_all)
-        tp = int(((should == 1) & (pred == 1)).sum())
-        fp = int(((should == 0) & (pred == 1)).sum())
-        fn = int(((should == 1) & (pred == 0)).sum())
-        precision = tp / (tp + fp) if (tp + fp) else 0.0
-        recall = tp / (tp + fn) if (tp + fn) else 0.0
-        f1 = (
-            2 * precision * recall / (precision + recall)
-            if (precision + recall)
-            else 0.0
-        )
-
-        metrics = {
-            "eval/mean_reward": float(np.mean(rewards)) if rewards else 0.0,
-            "eval/mean_valence": float(np.mean(valence_means))
-            if valence_means
-            else 0.0,
-            "eval/mean_trust": float(np.mean(trust_means)) if trust_means else 0.0,
-            "eval/mean_arousal": float(np.mean(arousal_means))
-            if arousal_means
-            else 0.0,
-            "eval/safety_viols_per_ep": float(
-                np.sum(safety) / max(1, self.eval_episodes)
-            ),
-            "eval/refusals_per_ep": float(
-                np.sum(refusals) / max(1, self.eval_episodes)
-            ),
-            "eval/justified_ratio": float(
-                (np.sum(justified) / max(1, np.sum(refusals))) if refusals else 0.0
-            ),
-            "eval/calibration_spearman": rho,
-            "eval/avg_threshold": float(np.mean(threshold_all))
-            if threshold_all
-            else 0.0,
-            "eval/avg_risk_estimate": float(np.mean(risk_all)) if risk_all else 0.0,
-            "eval/refusal_f1": float(f1),
-            "eval/risky_commands": int(risky_total),
-            "eval/risky_refused": int(risky_refused),
-            "eval/risky_complied": int(risky_complied),
-            "eval/violations_after_comply": int(violations_after_comply),
-        }
-        for idx, rate in enumerate(refusal_rates):
-            metrics[f"calibration/bin_{idx}_refusal_rate"] = float(rate)
-            metrics[f"calibration/bin_{idx}_count"] = float(bin_counts[idx])
-        return metrics
-
-
-# Factory wires optional CostWrapper/ActionMasker depending on the algorithm so the vec env mirrors the learner's assumptions
 def make_env_factory(
     algo: str,
     observe_valence: bool,
     explicit_explanation_style: bool,
     disable_clarify_alt: bool,
+    blame_mode: str,
     rw: RewardWeights,
     sp: SimParams,
-    seed: int | None,
+    seed: Optional[int],
 ) -> Callable[[], EmpathicDisobedienceEnv]:
+    """Build the training env, with the wrapper each algorithm needs."""
+
     def _thunk():
         env = EmpathicDisobedienceEnv(
             reward_weights=rw,
@@ -263,15 +147,13 @@ def make_env_factory(
             observe_valence=observe_valence,
             explicit_explanation_style=explicit_explanation_style,
             disable_clarify_alt=disable_clarify_alt,
+            blame_mode=blame_mode,
+            seed=seed,
         )
         if algo == "ppo_lagrangian":
             env = CostWrapper(env)
         if algo == "ppo_masked":
-            if ActionMasker is None:
-                raise RuntimeError("Maskable PPO requires sb3-contrib to be installed.")
             env = ActionMasker(env, valid_action_mask)
-        if seed is not None:
-            env.reset(seed=seed)
         return env
 
     return _thunk
@@ -293,21 +175,57 @@ def get_algorithm_class(algo: str):
     raise ValueError(f"Unsupported algorithm '{algo}'")
 
 
-def parse_args() -> argparse.Namespace:
+def default_run_name(args: argparse.Namespace) -> str:
+    """Algorithm name plus one suffix per ablation, so runs never overwrite."""
+
+    name = args.algo
+    for flag, suffix in (
+        ("no_observe_valence", "noaffect"),
+        ("disable_clarify_alt", "noclarifyalt"),
+        ("no_curriculum", "nocurriculum"),
+        ("no_trust_penalty", "notrustpenalty"),
+        ("no_explicit_style", "nostyle"),
+    ):
+        if getattr(args, flag):
+            name += f"_{suffix}"
+    return name
+
+
+def config_defaults(path: str) -> dict:
+    """Translate a YAML config into argparse defaults.
+
+    ``training:`` keys are argument names with underscores (``total_steps``).
+    ``env:`` accepts ``observe_valence``, ``trust_penalty``, ``curriculum``,
+    ``explicit_style``, ``disable_clarify_alt`` and ``blame_mode``.
+    """
+
+    cfg = yaml.safe_load(Path(path).read_text()) or {}
+    defaults = dict(cfg.get("training") or {})
+    env_cfg = dict(cfg.get("env") or {})
+    for key, dest in (
+        ("observe_valence", "no_observe_valence"),
+        ("trust_penalty", "no_trust_penalty"),
+        ("curriculum", "no_curriculum"),
+        ("explicit_style", "no_explicit_style"),
+    ):
+        if key in env_cfg:
+            defaults[dest] = not bool(env_cfg.pop(key))
+    defaults.update(env_cfg)
+    return defaults
+
+
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Train PPO-family baselines on EED-Gym")
+    ap.add_argument("--config", help="YAML file with training/env defaults")
     ap.add_argument("--algo", choices=sorted(ALGO_CHOICES), default="ppo")
-    ap.add_argument(
-        "--policy", help="Override policy class (default inferred from algo)"
-    )
+    ap.add_argument("--policy", help="Override policy class (default inferred from algo)")
     ap.add_argument("--total-steps", type=int, default=600_000)
-    ap.add_argument("--eval-interval", type=int, default=20_000)
+    ap.add_argument("--eval-interval", type=int, default=20_000, help="0 disables eval")
     ap.add_argument("--eval-episodes", type=int, default=20)
     ap.add_argument("--seeds", type=int, nargs="+", default=[0])
     ap.add_argument("--out-dir", default="artifacts/runs")
-    ap.add_argument("--name", help="Run name prefix (defaults to algo name)")
-    ap.add_argument(
-        "--n-steps", type=int, help="Rollout horizon per update (defaults vary by algo)"
-    )
+    ap.add_argument("--name", help="Run name (default: algo plus ablation suffixes)")
+    ap.add_argument("--n-steps", type=int, help="Rollout horizon (default 256, LSTM 128)")
     ap.add_argument("--batch-size", type=int, default=256)
     ap.add_argument("--learning-rate", type=float, default=3e-4)
     ap.add_argument("--gamma", type=float, default=0.99)
@@ -315,67 +233,70 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--clip-range", type=float, default=0.2)
     ap.add_argument("--ent-coef", type=float, default=0.1)
     ap.add_argument("--vf-coef", type=float, default=0.5)
-    ap.add_argument(
-        "--no-curriculum",
-        action="store_true",
-        help="Disable reward-weight curriculum schedule",
-    )
+    ap.add_argument("--no-curriculum", action="store_true")
     ap.add_argument("--no-observe-valence", action="store_true")
     ap.add_argument("--disable-clarify-alt", action="store_true")
     ap.add_argument("--no-explicit-style", action="store_true")
     ap.add_argument(
         "--no-trust-penalty",
         action="store_true",
-        help="Zero out trust deviation penalty in rewards",
+        help="Zero out the trust deviation penalty",
     )
+    ap.add_argument("--blame-mode", choices=["off", "risk_only", "always"], default="off")
     ap.add_argument(
-        "--cost-limit", type=float, default=0.25, help="Only used for ppo_lagrangian"
+        "--cost-limit",
+        type=float,
+        default=0.25,
+        help="ppo_lagrangian: allowed safety violations per episode",
     )
-    ap.add_argument(
-        "--penalty-lr", type=float, default=0.02, help="Only used for ppo_lagrangian"
-    )
-    return ap.parse_args()
+    ap.add_argument("--penalty-lr", type=float, default=0.02, help="ppo_lagrangian only")
+    ap.add_argument("--tensorboard-log", help="Directory for TensorBoard logs")
+    ap.add_argument("--verbose", type=int, default=1)
+    return ap
 
 
-def main():
-    args = parse_args()
+def parse_args(argv=None) -> argparse.Namespace:
+    ap = build_parser()
+    pre, _ = ap.parse_known_args(argv)
+    if pre.config:
+        defaults = config_defaults(pre.config)
+        known = {action.dest for action in ap._actions}
+        unknown = sorted(set(defaults) - known)
+        if unknown:
+            ap.error(f"Unknown config keys: {unknown}")
+        ap.set_defaults(**defaults)
+    return ap.parse_args(argv)
+
+
+def main(argv=None) -> None:
+    args = parse_args(argv)
 
     algo = args.algo
     recurrent = algo == "ppo_lstm"
-
     policy = args.policy or ("MlpLstmPolicy" if recurrent else "MlpPolicy")
     n_steps = int(args.n_steps or (128 if recurrent else 256))
 
-    out_dir = Path(args.out_dir) / algo
+    run_base = args.name or default_run_name(args)
+    out_dir = Path(args.out_dir) / run_base
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    observe_valence = not args.no_observe_valence
-    disable_clarify_alt = bool(args.disable_clarify_alt)
-    explicit_explanation_style = not args.no_explicit_style
-    curriculum = not args.no_curriculum
-
-    rw = RewardWeights()
-    if args.no_trust_penalty:
-        rw.trust_deviation = 0.0
-    sp = SimParams()
-
+    env_flags = dict(
+        observe_valence=not args.no_observe_valence,
+        explicit_explanation_style=not args.no_explicit_style,
+        disable_clarify_alt=bool(args.disable_clarify_alt),
+        blame_mode=args.blame_mode,
+    )
     AlgoClass = get_algorithm_class(algo)
 
     for seed in args.seeds:
-        run_name = f"{args.name or algo}_seed{seed}"
-        ckpt_path = out_dir / f"{run_name}.zip"
+        rw = RewardWeights()
+        if args.no_trust_penalty:
+            rw.trust_deviation = 0.0
+        sp = SimParams()
 
-        env_factory = make_env_factory(
-            algo=algo,
-            observe_valence=observe_valence,
-            explicit_explanation_style=explicit_explanation_style,
-            disable_clarify_alt=disable_clarify_alt,
-            rw=rw,
-            sp=sp,
-            seed=seed,
+        vec = VecMonitor(
+            DummyVecEnv([make_env_factory(algo, rw=rw, sp=sp, seed=seed, **env_flags)])
         )
-        vec = EpisodeStatsWrapper(DummyVecEnv([env_factory]))
-
         model_kwargs = dict(
             policy=policy,
             env=vec,
@@ -387,37 +308,43 @@ def main():
             clip_range=float(args.clip_range),
             ent_coef=float(args.ent_coef),
             vf_coef=float(args.vf_coef),
-            verbose=1,
+            tensorboard_log=args.tensorboard_log,
+            verbose=int(args.verbose),
             seed=int(seed),
         )
         if algo == "ppo_lagrangian":
             model_kwargs.update(
-                cost_limit=float(args.cost_limit),
-                penalty_lr=float(args.penalty_lr),
+                cost_limit=float(args.cost_limit), penalty_lr=float(args.penalty_lr)
             )
-
         model = AlgoClass(**model_kwargs)
 
-        eval_cb = EvalCallback(
-            eval_env_fn=make_env_factory(
-                algo=algo,
-                observe_valence=observe_valence,
-                explicit_explanation_style=explicit_explanation_style,
-                disable_clarify_alt=disable_clarify_alt,
-                rw=rw,
-                sp=sp,
-                seed=seed + 10_000,
-            ),
+        callback = CurriculumEvalCallback(
+            eval_env=EmpathicDisobedienceEnv(**env_flags),
             eval_interval=args.eval_interval,
             eval_episodes=args.eval_episodes,
+            eval_seed=seed + 10_000,
             reward_weights=rw,
-            sim_params=sp,
-            curriculum=curriculum,
-            recurrent=recurrent,
+            curriculum=not args.no_curriculum,
         )
+        model.learn(total_timesteps=int(args.total_steps), callback=callback)
 
-        model.learn(total_timesteps=int(args.total_steps), callback=eval_cb)
+        ckpt_path = out_dir / f"{run_base}_seed{seed}.zip"
         model.save(str(ckpt_path))
+        run_config = {
+            "eed_gym_version": eed_benchmark.__version__,
+            "algo": algo,
+            "seed": int(seed),
+            **env_flags,
+            "curriculum": not args.no_curriculum,
+            "trust_penalty": not args.no_trust_penalty,
+            "reward_weights": vars(rw),
+            "hyperparameters": {
+                k: v for k, v in model_kwargs.items() if k not in ("env", "verbose")
+            },
+            "total_steps": int(args.total_steps),
+        }
+        ckpt_path.with_suffix(".json").write_text(json.dumps(run_config, indent=2))
+        print(f"saved {ckpt_path}")
 
 
 if __name__ == "__main__":

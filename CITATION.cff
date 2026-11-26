@@ -1,12 +1,12 @@
 cff-version: 1.2.0
+message: "If you use EED Gym, please cite the HRI 2026 paper."
 title: "When Robots Say No: The Empathic Ethical Disobedience Benchmark"
 authors:
   - family-names: Kuzmenko
     given-names: Dmytro
   - family-names: Shvai
     given-names: Nadiya
-year: 2025
-version: "1.0.0"
+version: "1.1.0"
 repository-code: https://github.com/dmytro-kuzmenko/eed_gym
 abstract: >
   Robots must balance compliance with safety and social expectations as blind obedience can cause harm, while over-refusal erodes trust. 
@@ -18,3 +18,17 @@ abstract: >
   Constructive styles are rated most trustworthy, empathic styles -- most empathic, and safe RL methods improve robustness but also make agents more prone to overly cautious behavior. 
   We release code, configurations, and reference policies to enable reproducible evaluation and systematic human-robot interaction research on refusal and trust.
 license: MIT
+preferred-citation:
+  type: conference-paper
+  title: "When Robots Say No: The Empathic Ethical Disobedience Benchmark"
+  authors:
+    - family-names: Kuzmenko
+      given-names: Dmytro
+    - family-names: Shvai
+      given-names: Nadiya
+  collection-title: "Proceedings of the 21st ACM/IEEE International Conference on Human-Robot Interaction"
+  year: 2026
+  start: 168
+  end: 176
+  doi: 10.1145/3757279.3785547
+  url: "https://doi.org/10.1145/3757279.3785547"
