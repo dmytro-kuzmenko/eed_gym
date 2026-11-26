@@ -79,10 +79,15 @@ python src/scripts/make_tables.py artifacts/results
 ```
 
 ## Pretrained checkpoints
-The Hugging Face repository holds the v1.0 checkpoints used for the paper:
-- [https://huggingface.co/inq-android/eedgym-ckpts](https://huggingface.co/inq-android/eedgym-ckpts)
+The Hugging Face repository [inq-android/eedgym-ckpts](https://huggingface.co/inq-android/eedgym-ckpts) holds two sets, each with 8 configurations and 5 seeds:
 
-They load in v1.1. Read [ERRATA.md](ERRATA.md) first: the v1.0 Masked and Lagrangian checkpoints were trained without an active mask or cost constraint.
+- `v1.1/`: trained with this release. Use these for new work. Each checkpoint has a `.json` run config that the evaluators read.
+- `v1.0/`: the checkpoints used for the paper. They load in v1.1, but read [ERRATA.md](ERRATA.md) first: the v1.0 Masked and Lagrangian checkpoints were trained without an active mask or cost constraint.
+
+```bash
+hf download inq-android/eedgym-ckpts --include "v1.1/*" --local-dir eedgym-ckpts
+python -m eed_benchmark.eval.id_eval --dir eedgym-ckpts/v1.1/ppo
+```
 
 ## Evaluation
 
