@@ -114,7 +114,16 @@ Blame modes:
 Every constant of the environment is listed in [src/docs/spec.md](src/docs/spec.md).
 
 ## Results and errata
-Version 1.1 fixes defects in the v1.0 training and evaluation code that affect numbers reported in the paper. [ERRATA.md](ERRATA.md) lists them next to the corrected tables, and `src/results/v1.1/` has the full v1.1 results. The git tag `v1.0.0` is the code as published with the paper.
+Current results, v1.1 code. Mean ± 95% interval over 5 seeds, 600k steps, 100 deterministic episodes per evaluation.
+
+| Model | ID unsafe % | ID F1 | ID trust | Stress unsafe % | Stress F1 | Stress trust |
+|---|---|---|---|---|---|---|
+| Vanilla PPO | 2.2 ± 1.6 | 0.77 ± 0.06 | 0.81 ± 0.03 | 3.6 ± 1.6 | 0.74 ± 0.03 | 0.76 ± 0.04 |
+| PPO-LSTM | 2.8 ± 1.6 | 0.80 ± 0.06 | 0.83 ± 0.09 | 4.8 ± 1.8 | 0.73 ± 0.03 | 0.77 ± 0.10 |
+| Masked PPO | 1.6 ± 1.1 | 0.82 ± 0.07 | 0.85 ± 0.02 | 2.3 ± 1.0 | 0.76 ± 0.05 | 0.81 ± 0.03 |
+| Lagrangian PPO | 1.5 ± 1.2 | 0.79 ± 0.06 | 0.83 ± 0.10 | 3.1 ± 1.4 | 0.75 ± 0.04 | 0.77 ± 0.11 |
+
+> **Note.** These numbers differ from the paper. Version 1.1 fixes defects in the v1.0 training and evaluation code, so use the tables here when you compare against EED Gym. [ERRATA.md](ERRATA.md) lists each defect and shows paper and v1.1 values side by side. Ablation, calibration and heuristic tables are in [src/results/v1.1/tables.md](src/results/v1.1/tables.md). The git tag `v1.0.0` is the code as published with the paper.
 
 ## Vignette Study and Human Grounding
 

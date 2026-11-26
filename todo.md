@@ -26,7 +26,7 @@
 ## Needs you
 - [ ] Review, commit, tag `v1.1.0`, push
 - [ ] Upload v1.1 checkpoints to Hugging Face with a model card; drop "anonymized" wording there too
-- [ ] Decide whether to send the erratum to ACM or keep it repo-only
+- [x] Erratum stays repo-only, not sent to ACM
 - [ ] Update the project page with the corrected tables
 - [ ] Publish to PyPI, archive on Zenodo
 
